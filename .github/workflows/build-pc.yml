@@ -70,6 +70,8 @@ jobs:
           esac
           curl -fL --retry 3 -o "dist/HocLieuAI/models/$(basename "$URL")" "$URL"
           ls -la dist/HocLieuAI/models
+          sz=$(stat -c %s dist/HocLieuAI/models/*.gguf)
+          [ "$sz" -gt 100000000 ] || { echo "File mô hình tải về bị lỗi (quá nhỏ)"; exit 1; }
 
       - name: Tạo biểu tượng
         shell: bash
@@ -98,14 +100,12 @@ jobs:
           cd ..
           ls -la HocLieuAI-PC.zip
 
-      - name: Lưu bản build (không kèm mô hình, để tải nhanh)
+      - name: Lưu bản build đầy đủ (kèm mô hình) vào Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HocLieuAI-PC-ung-dung
-          path: |
-            dist/HocLieuAI/HocLieuAI.exe
-            dist/HocLieuAI/web
-            dist/HocLieuAI/llama
+          name: HocLieuAI-PC-day-du
+          path: dist/HocLieuAI
+          compression-level: 0
           retention-days: 14
 
       - name: Phát hành (Releases) — bản đầy đủ kèm mô hình
