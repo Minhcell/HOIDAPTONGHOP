@@ -1,0 +1,67 @@
+HỌC LIỆU AI — HƯỚNG DẪN SỬ DỤNG
+================================
+
+App nạp giáo trình, tài liệu học tập (Word, PDF, PDF scan, ảnh chụp) và trả lời câu hỏi
+BÁM SÁT tài liệu đó; phân tích câu hỏi; trả lời có liên hệ thực tế hoặc gợi ý ý liên hệ
+theo bộ phận/lĩnh vực công tác. Chạy hoàn toàn OFFLINE, không cần Internet.
+
+------------------------------------------------
+1. TRÊN MÁY TÍNH (Windows 10/11)
+------------------------------------------------
+- Giải nén HocLieuAI-PC.zip ra một thư mục (VD: D:\HocLieuAI).
+- Chạy HocLieuAI.exe. Lần đầu Windows hỏi tường lửa → chọn "Cho phép" (Allow) cả mạng
+  Private/Domain để điện thoại, máy khác trong LAN dùng chung được.
+- Cửa sổ nhỏ báo "✔ Sẵn sàng" và tự mở app. GIỮ cửa sổ này mở trong lúc dùng.
+- App tự chọn mô hình AI theo RAM máy. Đổi mô hình: chép file .gguf vào thư mục models,
+  chọn trong ô "Mô hình AI" → "Đổi & chạy lại".
+- Chuyển sang PC khác: chép nguyên thư mục HocLieuAI. Tài liệu đã nạp nằm trong trình
+  duyệt, nên trước đó vào Cài đặt → "Xuất thư viện" rồi sang máy mới "Nhập thư viện".
+- Máy khác trong LAN chỉ cần mở trình duyệt vào địa chỉ hiện trong cửa sổ
+  (VD: http://10.71.5.20:8080) là dùng được, không cần cài.
+
+Mô hình gợi ý:
+  RAM 4–6 GB : qwen2.5-0.5b-instruct-q4_k_m.gguf  (nhanh, trả lời đơn giản)
+  RAM 8 GB+  : qwen2.5-1.5b-instruct-q4_k_m.gguf  (khuyên dùng)
+  RAM 16 GB+ : có thể chép thêm qwen2.5-3b-instruct-q4_k_m.gguf (chất lượng tốt hơn, chậm hơn)
+
+File HocLieuAI.ini (mở bằng Notepad) để đặt cố định mô hình, cổng (port), số CPU.
+
+------------------------------------------------
+2. TRÊN ĐIỆN THOẠI ANDROID
+------------------------------------------------
+- Cài HocLieuAI.apk.
+- Cách A — AI chạy ngay trên điện thoại:
+  chép file mô hình .gguf vào điện thoại → app → Cài đặt → "+ Thêm mô hình" → chọn file.
+  App chép mô hình vào bộ nhớ riêng (có thể xoá file gốc sau đó). Máy RAM 8GB trở lên
+  dùng bản 1.5b; máy yếu dùng bản 0.5b.
+- Cách B — dùng AI của PC (nhanh hơn nhiều): Cài đặt → "Chạy AI ở đâu" = Máy chủ PC →
+  nhập địa chỉ PC (VD: http://10.71.5.20:8080) → Kiểm tra.
+  Tài liệu vẫn lưu và tìm trên điện thoại; chỉ phần AI viết câu trả lời là chạy trên PC.
+- Để "Tự động": app dùng mô hình trên máy nếu có, không có thì dùng PC đã nhập địa chỉ.
+
+------------------------------------------------
+3. CÁCH DÙNG
+------------------------------------------------
+Tab TÀI LIỆU
+  - "+ Thư mục" tạo thư mục theo môn học/giáo trình.
+  - Chọn file (được chọn nhiều file) → "Nạp vào hệ thống".
+  - PDF scan, ảnh chụp: app tự nhận dạng chữ tiếng Việt (OCR) — chậm, mỗi trang vài giây.
+  - PDF gõ font cũ (TCVN3/.VnTime, VNI) hiện chữ lỗi: tích "Nhận dạng chữ (OCR) toàn bộ".
+  - File .doc (Word 97-2003) đọc gần đúng; tốt nhất mở Word → Lưu thành .docx.
+
+Tab HỎI ĐÁP
+  - Phạm vi: tất cả / một thư mục / một tài liệu.
+  - Kiểu trả lời:
+      Trả lời theo giáo trình — chỉ dựa vào tài liệu, ghi nguồn [1], [2].
+      Phân tích câu hỏi       — phân tích yêu cầu, kiến thức liên quan, dàn ý, bài trả lời.
+      Trả lời + liên hệ thực tế — lý luận theo giáo trình rồi liên hệ bộ phận/lĩnh vực.
+      Gợi ý ý liên hệ thực tế — chỉ gợi ý ý, câu hỏi gợi mở để tự viết.
+  - Lĩnh vực: theo hồ sơ (khai ở Cài đặt) / để app tự chọn / chọn trong danh sách /
+    tự nhập lần này. Có thể ghi luôn trong câu hỏi: "...liên hệ tại Đội CSGT huyện".
+  - Bấm số [1], [2] trong câu trả lời để xem đúng đoạn giáo trình đã dùng.
+  - "Lưu Word" xuất câu trả lời ra file .doc mở bằng Word.
+  - Chưa có mô hình AI: app vẫn tìm và hiện các đoạn giáo trình liên quan nhất.
+
+LƯU Ý: AI chạy offline là mô hình nhỏ — phần lý luận đã được ép bám tài liệu và ghi nguồn,
+nhưng vẫn nên đối chiếu với đoạn nguồn. Ví dụ liên hệ thực tế chỉ là gợi ý, cần thay bằng
+sự việc, số liệu thật tại đơn vị.
