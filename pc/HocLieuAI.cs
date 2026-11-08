@@ -16,6 +16,8 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("Hoc Lieu AI")]
 [assembly: System.Reflection.AssemblyProduct("Hoc Lieu AI")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright by © Thanh Minh - Doi 1 - PA06")]
+[assembly: System.Reflection.AssemblyCompany("Thanh Minh - Doi 1 - PA06")]
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
 namespace HocLieuAI
@@ -209,7 +211,7 @@ namespace HocLieuAI
             if (!File.Exists(Path.Combine(dir, "HocLieuAI.ini"))) cfg.Save();
             ram = Sys.RamGB();
 
-            Text = "Học Liệu AI — máy chủ AI offline";
+            Text = "Học Liệu AI — máy chủ AI offline — Thanh Minh - Đội 1 - PA06";
             Font = new Font("Segoe UI", 10f);
             ClientSize = new Size(620, 470);
             StartPosition = FormStartPosition.CenterScreen;
@@ -218,6 +220,7 @@ namespace HocLieuAI
             BackColor = Color.FromArgb(244, 246, 248);
 
             var title = new Label { Text = "📘 Học Liệu AI", Font = new Font("Segoe UI", 15f, FontStyle.Bold), ForeColor = Color.FromArgb(36, 49, 65), AutoSize = true, Location = new Point(16, 12) };
+            var copy = new Label { Text = "COPYRIGHT BY © THANH MINH - ĐỘI 1 - PA06", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = Color.FromArgb(31, 95, 168), AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Location = new Point(250, 18), Size = new Size(356, 22) };
             lblStatus = new Label { Text = "Đang khởi động…", AutoSize = false, Location = new Point(18, 50), Size = new Size(590, 24), ForeColor = Color.FromArgb(164, 97, 11) };
             lblRam = new Label { AutoSize = false, Location = new Point(18, 76), Size = new Size(590, 22), ForeColor = Color.FromArgb(102, 114, 127) };
             var l1 = new Label { Text = "Mô hình AI:", AutoSize = true, Location = new Point(18, 108) };
@@ -233,7 +236,7 @@ namespace HocLieuAI
             var l3 = new Label { Text = "Nhật ký:", AutoSize = true, Location = new Point(18, 280) };
             txtLog = new TextBox { ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(18, 302), Size = new Size(588, 154), Font = new Font("Consolas", 8.5f), BackColor = Color.White };
 
-            Controls.AddRange(new Control[] { title, lblStatus, lblRam, l1, cboModel, btnRestart, l2, txtAddr, btnOpen, btnFolder, btnAddModel, btnQuit, l3, txtLog });
+            Controls.AddRange(new Control[] { title, copy, lblStatus, lblRam, l1, cboModel, btnRestart, l2, txtAddr, btnOpen, btnFolder, btnAddModel, btnQuit, l3, txtLog });
 
             btnOpen.Click += delegate { Launcher.OpenBrowser("http://127.0.0.1:" + cfg.Port + "/"); };
             btnFolder.Click += delegate { var p = Path.Combine(dir, "models"); Directory.CreateDirectory(p); Process.Start("explorer.exe", "\"" + p + "\""); };
