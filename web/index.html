@@ -127,9 +127,9 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
       <button class="fix" id="btnStop" style="display:none">Dừng</button>
       <label class="fix mu" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="followUp" style="width:auto"> Hỏi tiếp câu trước</label>
       <span></span>
+      <button class="fix dan" id="btnClearAns">🗑 Xoá lịch sử đã hỏi <span id="histCnt"></span></button>
     </div>
   </div>
-  <div class="row" id="ansBar" style="display:none;margin:0 0 8px"><span class="mu">Câu đã hỏi (mới nhất ở trên)</span><button class="sm fix dan" id="btnClearAns">🗑 Xoá lịch sử đã hỏi</button></div>
   <div id="answers"></div>
 </section>
 
@@ -572,7 +572,7 @@ async function ask(){
  const rec={id:uid('h'),q,mode:MODE,field,at:Date.now(),answer:'',hits:[],ai:AI.kind==='none'?'':AI.label,nSel:selS.size};
  if(AI.kind==='none'){rec.hits=hits.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
   rec.answer=hits.length?`**Chưa có mô hình AI** — dưới đây là ${hits.length} đoạn giáo trình liên quan nhất (bấm vào từng đoạn để xem đầy đủ):\n\n`+hits.map((h,i)=>`- [${i+1}] ${(h.head||(LIB.docMap.get(h.docId)||{}).name||'')}: ${h.text.slice(0,260).replace(/\n/g,' ')}…`).join('\n'):'Không tìm thấy đoạn nào trong giáo trình khớp với câu hỏi.';
-  const el=qaCard(rec);$('#answers').prepend(el);updateAnsBar();el.querySelector('.srcs').style.display='block';await DB.put('hist',rec);lastQA=rec;return}
+  const el=qaCard(rec);$('#answers').prepend(el);updateAnsBar();el.querySelector('.srcs').style.display='block';await DB.put('hist',rec);lastQA=rec;updateAnsBar();return}
  const prev=$('#followUp').checked&&lastQA?lastQA:null;
  const {msgs,used}=buildMessages(MODE,q,hits,field,prev,maxTok);
  rec.hits=used.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
@@ -583,7 +583,7 @@ async function ask(){
  catch(e){rec.answer=(rec.answer?rec.answer+'\n\n':'')+'⚠ Lỗi: '+(e.message||e)}
  ans.classList.remove('typing');ans.innerHTML=md(rec.answer||'(không có trả lời)');
  busy=false;$('#btnAsk').disabled=false;$('#btnStop').style.display='none';
- if(rec.answer){await DB.put('hist',rec);lastQA=rec}}
+ if(rec.answer){await DB.put('hist',rec);lastQA=rec}updateAnsBar()}
 $('#btnAsk').onclick=ask;$('#btnStop').onclick=()=>AI.stop();
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))ask()});
 
@@ -634,8 +634,8 @@ async function renderHist(){const all=(await DB.all('hist')).sort((a,b)=>b.at-a.
  for(const r of list){const el=qaCard(r);const m=el.querySelector('.meta');m.textContent=new Date(r.at).toLocaleString('vi-VN')+' · '+m.textContent;
 box.append(el)}}
 $('#histFilter').oninput=renderHist;
-function updateAnsBar(){$('#ansBar').style.display=$('#answers .qa')?'flex':'none'}
-$('#btnClearAns').onclick=async()=>{if(!confirm('Xoá toàn bộ câu đã hỏi và câu trả lời? (Không xoá tài liệu)'))return;await DB.clear('hist');lastQA=null;$$('#answers .qa').forEach(x=>x.remove());$('#hist').innerHTML='';updateAnsBar();toast('Đã xoá lịch sử đã hỏi')};
+async function updateAnsBar(){try{const n=(await DB.all('hist')).length;$('#histCnt').textContent=n?'('+n+')':'';$('#btnClearAns').disabled=!n}catch(e){}}
+$('#btnClearAns').onclick=async()=>{if(!(await DB.all('hist')).length){toast('Chưa có lịch sử');return}if(!confirm('Xoá toàn bộ câu đã hỏi và câu trả lời? (Không xoá tài liệu)'))return;await DB.clear('hist');lastQA=null;$$('#answers .qa').forEach(x=>x.remove());$('#hist').innerHTML='';updateAnsBar();toast('Đã xoá lịch sử đã hỏi')};
 $('#btnClearHist').onclick=async()=>{if(confirm('Xoá toàn bộ lịch sử hỏi đáp?')){await DB.clear('hist');lastQA=null;$$('#answers .qa').forEach(x=>x.remove());updateAnsBar();renderHist()}};
 
 /* ======================= CÀI ĐẶT ======================= */
@@ -697,7 +697,7 @@ const fixNav=()=>{$('nav').style.top=$('header').offsetHeight+'px'};fixNav();win
 (async()=>{
  try{await DB.open();await loadSettings();MODE=S.mode;renderModes();await LIB.load();refreshAll();
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
-  await AI.detect();
+  updateAnsBar();await AI.detect();
   if(!LIB.docs.length)$('#answers').innerHTML='<div class="card hint" id="startHint">Bắt đầu: vào tab <b>Tài liệu</b> → tạo thư mục môn học → chọn file giáo trình (Word, PDF, ảnh) → <b>Nạp vào hệ thống</b>. Sau đó quay lại đây đặt câu hỏi.</div>';
  }catch(e){console.error(e);toast('Lỗi khởi động: '+e.message,8000)}
 })();
