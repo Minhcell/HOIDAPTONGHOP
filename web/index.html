@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Học Liệu AI</title>
+<title>Học Liệu AI — Thanh Minh - Đội 1 - PA06</title>
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--tx:#243141;--mu:#66727f;--bd:#cdd4da;--bt:#e6e9ec;--ac:#1f5fa8;--ac2:#e8f0fb;--ok:#1d7a46;--warn:#a4610b;--err:#b3261e}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",Roboto,Arial,sans-serif}
 header{background:#243141;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
-header h1{font-size:17px;margin:0;flex:1}
+header h1{font-size:17px;margin:0;line-height:1.25}
+.htitle{flex:1;min-width:0}
+header{flex-wrap:wrap;row-gap:2px}
+.hcopy{flex-basis:100%;font-size:11px;color:#c9d3df;letter-spacing:.3px}
 #aiBadge{font-size:12px;padding:3px 8px;border-radius:10px;background:#3b4a5d;white-space:nowrap;max-width:55vw;overflow:hidden;text-overflow:ellipsis}
 #aiBadge.ok{background:#1d7a46}#aiBadge.warn{background:#a4610b}
 nav{display:flex;background:#fff;border-bottom:1px solid var(--bd);position:sticky;top:44px;z-index:4}
@@ -82,7 +85,7 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
 </style>
 </head>
 <body>
-<header><h1>📘 Học Liệu AI</h1><span id="aiBadge">Đang kiểm tra AI…</span></header>
+<header><div class="htitle"><h1>📘 Học Liệu AI</h1></div><span id="aiBadge">Đang kiểm tra AI…</span><div class="hcopy">COPYRIGHT BY © THANH MINH - ĐỘI 1 - PA06</div></header>
 <nav>
   <button data-t="ask" class="on">Hỏi đáp</button>
   <button data-t="docs">Tài liệu</button>
@@ -207,7 +210,7 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
     <p class="mu" style="margin:0 0 8px">Xuất toàn bộ thư viện (tài liệu đã nạp, thư mục, lịch sử) ra 1 file .hlai để chép sang PC hoặc điện thoại khác rồi Nhập vào.</p>
     <div class="row"><button class="fix" id="btnExport">Xuất thư viện</button><button class="fix" id="btnImport">Nhập thư viện</button><input type="file" id="impFile" accept=".hlai,.json" style="display:none"><button class="fix dan" id="btnWipe">Xoá toàn bộ dữ liệu</button></div>
   </div>
-  <p class="mu" style="text-align:center">Học Liệu AI v<span id="ver"></span> — chạy hoàn toàn offline</p>
+  <p class="mu" style="text-align:center">Học Liệu AI v<span id="ver"></span> — chạy hoàn toàn offline<br><b>COPYRIGHT BY © THANH MINH - ĐỘI 1 - PA06</b></p>
 </section>
 </main>
 
@@ -289,11 +292,35 @@ function selectedSet(){const ok=new Set(LIB.docs.map(d=>d.id));S.selDocs=(S.selD
 
 /* ======================= Đọc file ======================= */
 const TCVN_CH=/[¸µ¶·¹¨»¾¼½Æ©ÇÊÈÉË®ÌÐÎÏÑªÒÕÓÔÖ×ÝØÜÞßãáâä«åèæçé¬êíëìîïóñòôõ­öùø÷úûþüýÿ]/g;
-function looksGarbled(t){if(!t||t.length<40)return false;const vn=(t.match(/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/gi)||[]).length;const bad=(t.match(TCVN_CH)||[]).length;const vni=(t.match(/[a-zA-Z][ØÙÚÛÕÔÒÓÑÏÆÅÄÃÂÁÀ][a-z]/g)||[]).length;return (bad>vn&&bad>8)||(vni>12&&vni>vn)}
-let OCR=null;
-async function getOcr(log){if(OCR)return OCR;if(!window.Tesseract)throw new Error('Thiếu thư viện OCR');
- OCR=await Tesseract.createWorker('vie',1,{workerPath:'lib/tesseract/worker.min.js',corePath:'lib/tesseract/core',langPath:'lib/tesseract/lang',gzip:true,workerBlobURL:false,logger:m=>{if(log&&m.status==='recognizing text')log(m.progress)}});return OCR}
-async function ocrImage(src,log){const w=await getOcr(log);const r=await w.recognize(src);return (r.data.text||'').replace(/[ \t]+\n/g,'\n')}
+const VN_CH='àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ';
+function looksGarbled(t){if(!t||t.length<40)return false;const vn=(t.match(/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/gi)||[]).length;const bad=(t.match(TCVN_CH)||[]).length;const vni=(t.match(/[a-zA-Z][ØÙÚÛÕÔÒÓÑÏÆÅÄÃÂÁÀ][a-z]/g)||[]).length;if((bad>vn&&bad>8)||(vni>12&&vni>vn))return true;
+ // lớp chữ do máy scan tự nhận dạng sai dấu (VD "thçrc hin mt s ni dung"): ít từ có dấu + nhiều ký tự lạ ç ü ë…
+ const lw=t.toLowerCase();const words=lw.match(/\p{L}+/gu)||[];if(words.length<40)return false;
+ let wv=0;for(const w of words){for(const c of w){if(VN_CH.includes(c)){wv++;break}}}const r=wv/words.length;
+ let letters=0,foreign=0;for(const c of lw){if(/\p{L}/u.test(c)){letters++;if(c>'\u007f'&&!VN_CH.includes(c))foreign++}}const fr=foreign*1000/Math.max(1,letters);
+ return fr>3||(r>0.05&&r<0.45)}
+/* ---- OCR nhanh: nhiều luồng song song, chỉ xuất chữ, thu nhỏ ảnh quá lớn ---- */
+let OCR=null,OCR_N=0,OCR_INIT=null;const PRE_OCR=new Map();
+function ocrThreads(){const c=navigator.hardwareConcurrency||2;const ram=AI.ram()||4;let n=Math.min(IS_ANDROID?3:4,c<=2?c:c-1);if(ram<3)n=1;else if(ram<5)n=Math.min(n,2);return n}
+function getOcr(){if(OCR)return Promise.resolve(OCR);if(OCR_INIT)return OCR_INIT;if(!window.Tesseract)return Promise.reject(new Error('Thiếu thư viện OCR'));
+ OCR_INIT=(async()=>{const sch=Tesseract.createScheduler();const n=ocrThreads();
+  const opt={workerPath:'lib/tesseract/worker.min.js',corePath:'lib/tesseract/core',langPath:'lib/tesseract/lang',gzip:true,workerBlobURL:false};
+  const ws=await Promise.allSettled(Array.from({length:n},()=>Tesseract.createWorker('vie',1,opt)));
+  ws.forEach(r=>{if(r.status==='fulfilled')sch.addWorker(r.value)});
+  OCR_N=sch.getNumWorkers();if(!OCR_N){OCR_INIT=null;throw new Error('Không khởi động được OCR')}
+  OCR=sch;return sch})();
+ return OCR_INIT}
+const OCR_MAX=2200; // cạnh dài tối đa (px) — đủ nét cho chữ in, nhanh hơn nhiều so với ảnh gốc 4000px
+async function prepImage(src){
+ if(src instanceof HTMLCanvasElement)return src;
+ try{const bm=await createImageBitmap(src);const k=Math.min(1,OCR_MAX/Math.max(bm.width,bm.height));
+  const cv=document.createElement('canvas');cv.width=Math.round(bm.width*k);cv.height=Math.round(bm.height*k);
+  const cx=cv.getContext('2d');cx.filter='grayscale(1)';cx.drawImage(bm,0,0,cv.width,cv.height);bm.close&&bm.close();return cv}
+ catch(e){return src}}
+async function ocrImage(src){const sch=await getOcr();const img=await prepImage(src);
+ try{const r=await sch.addJob('recognize',img,{},{text:true,blocks:false,hocr:false,tsv:false});return (r.data.text||'').replace(/[ \t]+\n/g,'\n')}
+ finally{if(img instanceof HTMLCanvasElement&&img!==src){img.width=img.height=0}}}
+const isImgFile=f=>/\.(jpe?g|png|bmp|webp|tiff?|gif)$/i.test(f.name)||(f.type||'').startsWith('image/');
 function docBinaryText(buf){ // trích chữ gần đúng từ .doc (Word 97-2003)
  const u8=new Uint8Array(buf);const out=[];let cur='';
  for(let i=0;i+1<u8.length;i+=2){const c=u8[i]|(u8[i+1]<<8);
@@ -308,16 +335,22 @@ async function extractFile(file,force,prog){
  if(ext==='txt'){return [{page:null,text:await file.text()}]}
  if(ext==='docx'){const r=await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()});return [{page:null,text:r.value}]}
  if(ext==='doc'){const t=docBinaryText(await file.arrayBuffer());if(t.trim().length<50)throw new Error('Không đọc được file .doc này — mở bằng Word, Lưu thành .docx rồi nạp lại');return [{page:null,text:t,approx:true}]}
- if(ext==='pdf'){const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;const segs=[];
-  for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);let text='';
-   if(!force){const tc=await pg.getTextContent();let line='';for(const it of tc.items){line+=it.str;if(it.hasEOL){text+=line+'\n';line=''}else if(it.str&&!/\s$/.test(it.str))line+=' '}text+=line}
-   if(force||text.replace(/\s/g,'').length<30||looksGarbled(text)){prog(`Trang ${p}/${pdf.numPages}: nhận dạng chữ (OCR)…`,p/pdf.numPages);
-    const vp=pg.getViewport({scale:2});const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-    text=await ocrImage(cv);cv.width=cv.height=0}
-   else prog(`Trang ${p}/${pdf.numPages}`,p/pdf.numPages);
-   segs.push({page:p,text})}
-  return segs}
- if(/^(jpg|jpeg|png|bmp|webp|tif|tiff|gif)$/.test(ext)||file.type.startsWith('image/')){prog('Nhận dạng chữ trong ảnh…',.3);return [{page:null,text:await ocrImage(file,x=>prog('Nhận dạng chữ trong ảnh…',x))}]}
+ if(ext==='pdf'){const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;const N=pdf.numPages;const segs=new Array(N);const need=[];
+  for(let p=1;p<=N;p++){let text='';
+   if(!force){const pg=await pdf.getPage(p);const tc=await pg.getTextContent();let line='';for(const it of tc.items){line+=it.str;if(it.hasEOL){text+=line+'\n';line=''}else if(it.str&&!/\s$/.test(it.str))line+=' '}text+=line;pg.cleanup()}
+   if(force||text.replace(/\s/g,'').length<30||looksGarbled(text))need.push(p);else segs[p-1]={page:p,text};
+   if(p%10===0||p===N)prog(`Đọc chữ trang ${p}/${N}`,need.length?0.05:p/N)}
+  if(need.length){prog(`Khởi động OCR…`,0.05);await getOcr();let done=0,next=0;const t0=Date.now();
+   const tick=()=>{const el=(Date.now()-t0)/1000;const left=done?Math.round(el/done*(need.length-done)):0;prog(`OCR ${done}/${need.length} trang · ${OCR_N} luồng song song${done?' · còn ~'+(left>90?Math.round(left/60)+' phút':left+' giây'):''}`,0.05+0.95*done/need.length)};tick();
+   const run=async()=>{while(next<need.length){const p=need[next++];const pg=await pdf.getPage(p);const v1=pg.getViewport({scale:1});
+     const sc=Math.max(1.2,Math.min(2.5,1700/Math.max(v1.width,v1.height)));const vp=pg.getViewport({scale:sc});
+     const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+     await pg.render({canvasContext:cv.getContext('2d',{alpha:false}),viewport:vp}).promise;pg.cleanup();
+     try{segs[p-1]={page:p,text:await ocrImage(cv)}}finally{cv.width=cv.height=0}
+     done++;tick()}};
+   await Promise.all(Array.from({length:Math.min(OCR_N+1,need.length)},run))}
+  return segs.filter(Boolean)}
+ if(isImgFile(file)){prog('Nhận dạng chữ trong ảnh…',.3);const pre=PRE_OCR.get(file);PRE_OCR.delete(file);return [{page:null,text:await (pre||ocrImage(file))}]}
  throw new Error('Định dạng chưa hỗ trợ: .'+ext)}
 
 /* ======================= Chia đoạn ======================= */
@@ -576,7 +609,10 @@ $('#lib').onchange=async e=>{const s=e.target.closest('select[data-mv]');if(!s||
 $('#btnNewFolder').onclick=async()=>{const n=prompt('Tên thư mục (VD: Lý luận chính trị, Giáo trình Kiểm tra Đảng):');if(!n||!n.trim())return;const f={id:uid('f'),name:n.trim()};await DB.put('folders',f);LIB.folders.push(f);renderAddFolder();$('#addFolder').value=f.id;refreshAll()};
 $('#btnAdd').onclick=async()=>{const files=[...$('#files').files];if(!files.length){toast('Chọn file trước');return}
  const btn=$('#btnAdd');btn.disabled=true;const st=$('#addStat'),pg=$('#addProg');pg.style.display='block';let ok=0,fail=[];
+ PRE_OCR.clear();const kick=async i=>{if(!files.slice(i).some(isImgFile))return;try{await getOcr()}catch(e){return}
+  for(let j=i;j<files.length&&j<i+OCR_N+1;j++){const f=files[j];if(isImgFile(f)&&!PRE_OCR.has(f)){const pr=ocrImage(f);pr.catch(()=>{});PRE_OCR.set(f,pr)}}};
  for(let i=0;i<files.length;i++){const f=files[i];const base=i/files.length;
+  if(isImgFile(f))await kick(i);
   const prog=(m,x)=>{st.textContent=`(${i+1}/${files.length}) ${f.name}: ${m}`;pg.firstChild.style.width=((base+(x||0)/files.length)*100).toFixed(1)+'%'};
   try{prog('đang đọc…',0);const segs=await extractFile(f,$('#forceOcr').checked,prog);
    const chars=segs.reduce((a,s)=>a+s.text.length,0);if(chars<20)throw new Error('không có chữ');
@@ -651,6 +687,7 @@ function refreshAll(){if(LIB.docs.length&&$('#startHint'))$('#startHint').remove
 window.onAndroidBack=()=>{if($('#modal').classList.contains('on')){$('#modal').classList.remove('on');return true}const on=$('nav button.on');if(on&&on.dataset.t!=='ask'){$('nav button[data-t="ask"]').click();return true}return false};
 
 /* ======================= Khởi động ======================= */
+const fixNav=()=>{$('nav').style.top=$('header').offsetHeight+'px'};fixNav();window.addEventListener('resize',fixNav);
 (async()=>{
  try{await DB.open();await loadSettings();MODE=S.mode;renderModes();await LIB.load();refreshAll();
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
