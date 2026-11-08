@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ksFile = System.getenv("KS_FILE")
+
+android {
+    namespace 'vn.hoclieu.ai'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'vn.hoclieu.ai'
+        minSdk 24
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv("VERSION_CODE") ?: "1")
+        versionName "1.0." + (System.getenv("VERSION_CODE") ?: "0")
+    }
+
+    signingConfigs {
+        release {
+            if (ksFile && new File(ksFile).exists()) {
+                storeFile file(ksFile)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ksFile && new File(ksFile).exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    androidResources {
+        noCompress += ['wasm', 'gz', 'gguf']
+    }
+}
