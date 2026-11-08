@@ -1,0 +1,112 @@
+name: Build PC (HocLieuAI.exe)
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Mô hình AI đóng kèm bản PC"
+        type: choice
+        options: ["1.5b", "0.5b", "khong"]
+        default: "1.5b"
+  push:
+    branches: [main, master]
+    paths: ["web/**", "pc/**", "scripts/**", ".github/workflows/build-pc.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      MODEL: ${{ github.event.inputs.model || '1.5b' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Tải thư viện offline (Word, PDF, OCR tiếng Việt)
+        shell: bash
+        run: bash scripts/fetch-libs.sh web
+
+      - name: Tải llama.cpp (máy chủ AI cho Windows, bản CPU)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p dl dist/HocLieuAI/llama
+          ok=0
+          for pat in "llama-*-bin-win-cpu-x64.zip" "llama-*-bin-win-avx2-x64.zip" "llama-*-bin-win-noavx-x64.zip"; do
+            if gh release download -R ggml-org/llama.cpp --pattern "$pat" -D dl --clobber; then ok=1; echo "Đã tải: $pat"; break; fi
+          done
+          [ $ok = 1 ] || { echo "Không tải được llama.cpp"; exit 1; }
+          7z x -y -odl/llama dl/*.zip >/dev/null
+          f=$(find dl/llama -name llama-server.exe | head -1)
+          [ -n "$f" ] || { echo "Không thấy llama-server.exe"; exit 1; }
+          d=$(dirname "$f")
+          cp "$d"/llama-server.exe dist/HocLieuAI/llama/
+          cp "$d"/*.dll dist/HocLieuAI/llama/ 2>/dev/null || true
+          ls -la dist/HocLieuAI/llama
+
+      - name: Tải mô hình AI (Qwen2.5 Instruct, tiếng Việt khá)
+        if: env.MODEL != 'khong'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist/HocLieuAI/models
+          case "$MODEL" in
+            1.5b) URL="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" ;;
+            0.5b) URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf" ;;
+          esac
+          curl -fL --retry 3 -o "dist/HocLieuAI/models/$(basename "$URL")" "$URL"
+          ls -la dist/HocLieuAI/models
+
+      - name: Tạo biểu tượng
+        shell: bash
+        run: |
+          pip install pillow >/dev/null
+          python scripts/make_icon.py pc/icon.ico
+
+      - name: Biên dịch HocLieuAI.exe
+        shell: pwsh
+        run: |
+          $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          & $csc /nologo /target:winexe /optimize+ /win32icon:pc\icon.ico `
+            /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll `
+            /out:dist\HocLieuAI\HocLieuAI.exe pc\HocLieuAI.cs
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Gom file
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist/HocLieuAI/models
+          cp -r web dist/HocLieuAI/web
+          cp HUONG_DAN.txt dist/HocLieuAI/ || true
+          cd dist
+          7z a -tzip -mx=1 ../HocLieuAI-PC.zip HocLieuAI >/dev/null
+          cd ..
+          ls -la HocLieuAI-PC.zip
+
+      - name: Lưu bản build (không kèm mô hình, để tải nhanh)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HocLieuAI-PC-ung-dung
+          path: |
+            dist/HocLieuAI/HocLieuAI.exe
+            dist/HocLieuAI/web
+            dist/HocLieuAI/llama
+          retention-days: 14
+
+      - name: Phát hành (Releases) — bản đầy đủ kèm mô hình
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-v${{ github.run_number }}
+          name: "Học Liệu AI cho PC — bản ${{ github.run_number }}"
+          body: |
+            Tải **HocLieuAI-PC.zip**, giải nén ra một thư mục, chạy **HocLieuAI.exe**.
+            Mô hình kèm theo: ${{ env.MODEL }}. Muốn đổi mô hình: chép file .gguf vào thư mục `models`.
+          files: HocLieuAI-PC.zip
