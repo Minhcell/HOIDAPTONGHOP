@@ -193,7 +193,9 @@ namespace HocLieuAI
         Label lblStatus, lblRam;
         TextBox txtAddr, txtLog;
         ComboBox cboModel;
-        Button btnOpen, btnRestart, btnFolder, btnQuit;
+        Button btnOpen, btnRestart, btnFolder, btnQuit, btnAddModel;
+        TcpListener staticL;
+        bool copying;
         System.Windows.Forms.Timer tmr;
         StreamWriter logw;
         bool ready, quitting;
@@ -225,12 +227,13 @@ namespace HocLieuAI
             txtAddr = new TextBox { ReadOnly = true, Multiline = true, Location = new Point(18, 170), Size = new Size(588, 54), BackColor = Color.White, Font = new Font("Consolas", 10.5f) };
             btnOpen = MkBtn("Mở ứng dụng", new Point(18, 236), 150); btnOpen.Enabled = false;
             btnOpen.BackColor = Color.FromArgb(31, 95, 168); btnOpen.ForeColor = Color.White;
-            btnFolder = MkBtn("Thư mục mô hình", new Point(176, 236), 150);
+            btnFolder = MkBtn("Thư mục mô hình", new Point(176, 236), 132);
+            btnAddModel = MkBtn("Thêm mô hình…", new Point(314, 236), 134);
             btnQuit = MkBtn("Dừng & thoát", new Point(456, 236), 150);
             var l3 = new Label { Text = "Nhật ký:", AutoSize = true, Location = new Point(18, 280) };
             txtLog = new TextBox { ReadOnly = true, Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(18, 302), Size = new Size(588, 154), Font = new Font("Consolas", 8.5f), BackColor = Color.White };
 
-            Controls.AddRange(new Control[] { title, lblStatus, lblRam, l1, cboModel, btnRestart, l2, txtAddr, btnOpen, btnFolder, btnQuit, l3, txtLog });
+            Controls.AddRange(new Control[] { title, lblStatus, lblRam, l1, cboModel, btnRestart, l2, txtAddr, btnOpen, btnFolder, btnAddModel, btnQuit, l3, txtLog });
 
             btnOpen.Click += delegate { Launcher.OpenBrowser("http://127.0.0.1:" + cfg.Port + "/"); };
             btnFolder.Click += delegate { var p = Path.Combine(dir, "models"); Directory.CreateDirectory(p); Process.Start("explorer.exe", "\"" + p + "\""); };
@@ -241,7 +244,8 @@ namespace HocLieuAI
                 cfg.Model = mi == null ? "" : mi.Name; cfg.Save();
                 StopServer(); StartServer();
             };
-            FormClosing += delegate { StopServer(); };
+            FormClosing += delegate { StopServer(); StopStatic(); };
+            btnAddModel.Click += delegate { AddModel(); };
 
             tmr = new System.Windows.Forms.Timer { Interval = 1000 };
             tmr.Tick += delegate { Tick(); };
@@ -284,18 +288,16 @@ namespace HocLieuAI
         void StartServer()
         {
             ready = false; btnOpen.Enabled = false;
-            int lan = Sys.LanIPs().Count;
+            StopStatic();
             var ms = Models();
             cboModel.Items.Clear(); foreach (var m in ms) cboModel.Items.Add(m);
             var pick = PickModel(ms);
             lblRam.Text = "RAM máy: " + ram.ToString("0.0") + " GB · CPU: " + Environment.ProcessorCount + " luồng";
             if (pick == null)
             {
-                lblStatus.Text = "Chưa có mô hình AI (.gguf) trong thư mục models.";
-                lblStatus.ForeColor = Color.FromArgb(179, 38, 30);
-                MessageBox.Show(this, "Chưa có file mô hình AI (.gguf) trong thư mục:\r\n" + Path.Combine(dir, "models") +
-                    "\r\n\r\nTải file mô hình (ví dụ qwen2.5-1.5b-instruct-q4_k_m.gguf) ở mục Releases trên GitHub, chép vào thư mục trên rồi mở lại chương trình.",
-                    "Học Liệu AI", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Log("Chưa có file .gguf trong: " + Path.Combine(dir, "models"));
+                Log("Bấm 'Thêm mô hình…' để chọn file qwen2.5-1.5b-instruct-q4_k_m.gguf (hoặc bản 0.5b) đã tải về.");
+                NoAiMode("Chưa có mô hình AI — bấm \"Thêm mô hình…\" để chọn file .gguf. App vẫn mở ở chế độ trích đoạn giáo trình.");
                 return;
             }
             cboModel.SelectedItem = pick;
@@ -309,8 +311,7 @@ namespace HocLieuAI
             string exe = FindServer();
             if (exe == null)
             {
-                lblStatus.Text = "Thiếu llama-server.exe trong thư mục llama.";
-                lblStatus.ForeColor = Color.FromArgb(179, 38, 30);
+                NoAiMode("Thiếu llama-server.exe trong thư mục llama — app mở ở chế độ trích đoạn (không có AI).");
                 return;
             }
             int ctx = cfg.Ctx > 0 ? cfg.Ctx : (ram >= 12 ? 8192 : 4096);
@@ -393,6 +394,149 @@ namespace HocLieuAI
             lblStatus.ForeColor = Color.FromArgb(29, 122, 70);
             ShowAddr();
             Launcher.OpenBrowser("http://127.0.0.1:" + cfg.Port + "/");
+        }
+
+        /* ---- Chế độ không có AI: tự phục vụ giao diện web để vẫn dùng được ---- */
+        void NoAiMode(string msg)
+        {
+            lblStatus.Text = msg;
+            lblStatus.ForeColor = Color.FromArgb(164, 97, 11);
+            if (StartStatic())
+            {
+                btnOpen.Enabled = true;
+                ShowAddr();
+                Launcher.OpenBrowser("http://127.0.0.1:" + cfg.Port + "/");
+            }
+        }
+
+        bool StartStatic()
+        {
+            StopStatic();
+            try { staticL = new TcpListener(IPAddress.Any, cfg.Port); staticL.Start(); }
+            catch (Exception ex) { Log("Không mở được cổng " + cfg.Port + ": " + ex.Message); staticL = null; return false; }
+            var l = staticL;
+            var t = new Thread(() =>
+            {
+                while (true)
+                {
+                    TcpClient c;
+                    try { c = l.AcceptTcpClient(); } catch { break; }
+                    ThreadPool.QueueUserWorkItem(o => ServeClient((TcpClient)o), c);
+                }
+            });
+            t.IsBackground = true; t.Start();
+            Log("Đang phục vụ giao diện (không AI) ở cổng " + cfg.Port);
+            return true;
+        }
+
+        void StopStatic()
+        {
+            try { if (staticL != null) staticL.Stop(); } catch { }
+            staticL = null;
+        }
+
+        static string Mime(string f)
+        {
+            switch (Path.GetExtension(f).ToLowerInvariant())
+            {
+                case ".html": return "text/html; charset=utf-8";
+                case ".js": case ".mjs": return "text/javascript; charset=utf-8";
+                case ".css": return "text/css; charset=utf-8";
+                case ".wasm": return "application/wasm";
+                case ".json": return "application/json";
+                case ".svg": return "image/svg+xml";
+                case ".png": return "image/png";
+                default: return "application/octet-stream";
+            }
+        }
+
+        void ServeClient(TcpClient c)
+        {
+            using (c)
+            {
+                try
+                {
+                    c.ReceiveTimeout = 5000;
+                    var ns = c.GetStream();
+                    var sr = new StreamReader(ns, Encoding.ASCII);
+                    string line = sr.ReadLine();
+                    if (line == null) return;
+                    string hl;
+                    while (!string.IsNullOrEmpty(hl = sr.ReadLine())) { }
+                    var parts = line.Split(' ');
+                    string path = parts.Length > 1 ? parts[1] : "/";
+                    int qi = path.IndexOf('?'); if (qi >= 0) path = path.Substring(0, qi);
+                    path = Uri.UnescapeDataString(path);
+                    if (path == "/") path = "/index.html";
+                    string web = Path.GetFullPath(Path.Combine(dir, "web"));
+                    string f = Path.GetFullPath(Path.Combine(web, path.TrimStart('/').Replace('/', Path.DirectorySeparatorChar)));
+                    byte[] body; string status = "200 OK"; string ct = Mime(f);
+                    if (!f.StartsWith(web, StringComparison.OrdinalIgnoreCase) || !File.Exists(f))
+                    { status = "404 Not Found"; body = Encoding.UTF8.GetBytes("Not found"); ct = "text/plain"; }
+                    else body = File.ReadAllBytes(f);
+                    var hb = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + "\r\nContent-Type: " + ct + "\r\nContent-Length: " + body.Length +
+                        "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n");
+                    ns.Write(hb, 0, hb.Length);
+                    if (parts[0] != "HEAD") ns.Write(body, 0, body.Length);
+                }
+                catch { }
+            }
+        }
+
+        /* ---- Chọn file mô hình .gguf, chép vào thư mục models rồi chạy lại ---- */
+        void AddModel()
+        {
+            if (copying) return;
+            string src;
+            using (var dlg = new OpenFileDialog { Title = "Chọn file mô hình AI (.gguf)", Filter = "Mô hình AI (*.gguf)|*.gguf" })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                src = dlg.FileName;
+            }
+            var md = Path.Combine(dir, "models"); Directory.CreateDirectory(md);
+            string name = Path.GetFileName(src);
+            string dst = Path.Combine(md, name);
+            Action done = delegate
+            {
+                copying = false; btnAddModel.Enabled = true;
+                cfg.Model = name; cfg.Save();
+                Log("Đã thêm mô hình " + name);
+                StopServer(); StartServer();
+            };
+            if (string.Equals(Path.GetFullPath(src), Path.GetFullPath(dst), StringComparison.OrdinalIgnoreCase)) { done(); return; }
+            copying = true; btnAddModel.Enabled = false;
+            var th = new Thread(() =>
+            {
+                string tmp = dst + ".part";
+                try
+                {
+                    long total = new FileInfo(src).Length, cnt = 0, last = -1;
+                    using (var i = File.OpenRead(src))
+                    using (var o = File.Create(tmp))
+                    {
+                        var buf = new byte[1 << 20]; int n;
+                        while ((n = i.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            o.Write(buf, 0, n); cnt += n;
+                            long pc = cnt * 100 / Math.Max(1, total);
+                            if (pc != last)
+                            {
+                                last = pc;
+                                BeginInvoke(new Action(delegate { lblStatus.Text = "Đang chép mô hình " + name + " … " + pc + "%"; lblStatus.ForeColor = Color.FromArgb(164, 97, 11); }));
+                            }
+                        }
+                    }
+                    if (File.Exists(dst)) File.Delete(dst);
+                    File.Move(tmp, dst);
+                    BeginInvoke(done);
+                }
+                catch (Exception ex)
+                {
+                    try { File.Delete(tmp); } catch { }
+                    BeginInvoke(new Action(delegate { copying = false; btnAddModel.Enabled = true; lblStatus.Text = "Lỗi chép mô hình: " + ex.Message; lblStatus.ForeColor = Color.FromArgb(179, 38, 30); }));
+                }
+            });
+            th.IsBackground = true; th.Start();
         }
 
         void StopServer()
