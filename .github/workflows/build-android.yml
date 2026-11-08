@@ -1,0 +1,94 @@
+name: Build Android (HocLieuAI.apk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      kem_mo_hinh:
+        description: "Đính kèm file mô hình .gguf cho điện thoại vào bản phát hành"
+        type: boolean
+        default: true
+  push:
+    branches: [main, master]
+    paths: ["web/**", "android/**", "scripts/**", ".github/workflows/build-android.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Chép giao diện + thư viện offline vào APK
+        run: |
+          set -e
+          A=android/app/src/main/assets/www
+          rm -rf "$A" && mkdir -p "$A"
+          cp -r web/. "$A"/
+          bash scripts/fetch-libs.sh "$A"
+
+      - name: Chuẩn bị khoá ký (nếu có secrets)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/ks.jks"
+            echo "KS_FILE=$RUNNER_TEMP/ks.jks" >> "$GITHUB_ENV"
+            echo "Dùng khoá ký từ secrets"
+          else
+            echo "::warning::Chưa có secrets KEYSTORE_* — APK ký bằng khoá debug (mỗi lần build khác khoá, cài bản mới phải gỡ bản cũ)."
+          fi
+
+      - name: Build APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          cd android
+          gradle --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../HocLieuAI.apk
+          ls -la ../HocLieuAI.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HocLieuAI-apk
+          path: HocLieuAI.apk
+          retention-days: 14
+
+      - name: Tải mô hình cho điện thoại
+        if: github.event_name == 'push' || github.event.inputs.kem_mo_hinh == 'true'
+        run: |
+          set -e
+          mkdir -p models
+          curl -fL --retry 3 -o models/qwen2.5-0.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          curl -fL --retry 3 -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+          ls -la models
+
+      - name: Phát hành (Releases)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-v${{ github.run_number }}
+          name: "Học Liệu AI cho Android — bản ${{ github.run_number }}"
+          body: |
+            1. Cài **HocLieuAI.apk**.
+            2. Chép 1 file mô hình vào điện thoại: máy RAM dưới 6GB dùng `qwen2.5-0.5b…gguf`, RAM 8GB trở lên dùng `qwen2.5-1.5b…gguf`.
+            3. Mở app → Cài đặt → **+ Thêm mô hình** → chọn file vừa chép.
+          files: |
+            HocLieuAI.apk
+            models/*.gguf
