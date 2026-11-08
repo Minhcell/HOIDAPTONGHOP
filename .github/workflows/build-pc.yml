@@ -38,12 +38,19 @@ jobs:
         run: |
           set -e
           mkdir -p dl dist/HocLieuAI/llama
-          ok=0
-          for pat in "llama-*-bin-win-cpu-x64.zip" "llama-*-bin-win-avx2-x64.zip" "llama-*-bin-win-noavx-x64.zip"; do
-            if gh release download -R ggml-org/llama.cpp --pattern "$pat" -D dl --clobber; then ok=1; echo "Đã tải: $pat"; break; fi
+          # Dò 30 bản phát hành gần nhất, lấy bản đầu tiên có file Windows CPU x64
+          gh api "repos/ggml-org/llama.cpp/releases?per_page=30" \
+            --jq '.[] | .tag_name as $t | .assets[] | [$t, .name, .browser_download_url] | @tsv' > dl/assets.tsv
+          echo "Một số file Windows tìm thấy:"; grep -i "win" dl/assets.tsv | grep -i "x64" | head -8 || true
+          URL=""
+          for re in 'bin-win-cpu-x64\.zip$' 'bin-win-avx2-x64\.zip$' 'bin-win-noavx-x64\.zip$' 'win.*x64.*\.zip$'; do
+            URL=$(awk -F'\t' -v r="$re" '$2 ~ r && $2 !~ /cuda|vulkan|sycl|hip|opencl|cudart|arm64/ {print $3; exit}' dl/assets.tsv)
+            [ -n "$URL" ] && break
           done
-          [ $ok = 1 ] || { echo "Không tải được llama.cpp"; exit 1; }
-          7z x -y -odl/llama dl/*.zip >/dev/null
+          [ -n "$URL" ] || { echo "Không tìm thấy file llama.cpp cho Windows"; exit 1; }
+          echo "Tải: $URL"
+          curl -fL --retry 3 -o dl/llama.zip "$URL"
+          7z x -y -odl/llama dl/llama.zip >/dev/null
           f=$(find dl/llama -name llama-server.exe | head -1)
           [ -n "$f" ] || { echo "Không thấy llama-server.exe"; exit 1; }
           d=$(dirname "$f")
