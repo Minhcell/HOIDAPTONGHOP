@@ -129,6 +129,7 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
       <span></span>
     </div>
   </div>
+  <div class="row" id="ansBar" style="display:none;margin:0 0 8px"><span class="mu">Câu đã hỏi (mới nhất ở trên)</span><button class="sm fix dan" id="btnClearAns">🗑 Xoá lịch sử đã hỏi</button></div>
   <div id="answers"></div>
 </section>
 
@@ -413,7 +414,7 @@ const AI={kind:'none',label:'',ctx:4096,wl:null,ready:false,
  abortCtl:null,
  async chat(messages,{onToken,maxTokens,temperature}){
   this.abortCtl=new AbortController();const sig=this.abortCtl.signal;let full='';
-  const body={model:'local',messages,stream:true,max_tokens:maxTokens,temperature,top_p:0.9,repeat_penalty:1.1};
+  const body={model:'local',messages,stream:true,max_tokens:maxTokens,temperature,top_p:0.9,top_k:40,min_p:0.05,repeat_penalty:1.0,frequency_penalty:0,presence_penalty:0};
   if(this.kind==='server'){
    if(IS_ANDROID){return await lanChat(this.serverUrl+'/v1/chat/completions',body,t=>{full+=t;onToken(full)},sig).then(()=>full)}
    const r=await fetch(this.serverUrl+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:sig});
@@ -424,7 +425,7 @@ const AI={kind:'none',label:'',ctx:4096,wl:null,ready:false,
      try{const j=JSON.parse(d);const t=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;if(t){full+=t;onToken(full)}}catch(e){}}}
    return full}
   if(this.kind==='local'){
-   const it=await this.wl.createChatCompletion({messages,max_tokens:maxTokens,temperature,top_p:0.9,stream:true,abortSignal:sig});
+   const it=await this.wl.createChatCompletion({messages,max_tokens:maxTokens,temperature,top_p:0.9,top_k:40,min_p:0.05,penalty_repeat:1.0,penalty_freq:0,penalty_present:0,stream:true,abortSignal:sig});
    try{for await(const ch of it){const t=ch.choices&&ch.choices[0]&&ch.choices[0].delta&&ch.choices[0].delta.content;if(t){full+=t;onToken(full)}}}catch(e){if(!sig.aborted)throw e}
    return full}
   throw new Error('Chưa có AI')},
@@ -445,7 +446,8 @@ Quy tắc bắt buộc:
 2. Sau mỗi ý lấy từ tài liệu ghi số nguồn trong ngoặc vuông, ví dụ [1] hoặc [2][3].
 3. Nếu tài liệu không có nội dung để trả lời, nói rõ: "Giáo trình đã nạp chưa đề cập nội dung này." rồi gợi ý người dùng nên tìm ở phần nào/tài liệu nào.
 4. Phần liên hệ thực tế (nếu được yêu cầu) phải xuất phát từ lý luận trong giáo trình; ví dụ thực tế là gợi ý tham khảo, không khẳng định số liệu cụ thể của cơ quan nào.
-5. Trình bày rõ ràng, có đề mục (dùng ### cho đề mục), gạch đầu dòng khi liệt kê, văn phong chuẩn mực như bài làm, bài thu hoạch.`;
+5. Trình bày rõ ràng, có đề mục (dùng ### cho đề mục), gạch đầu dòng khi liệt kê, văn phong chuẩn mực như bài làm, bài thu hoạch.
+6. Luôn viết tiếng Việt CÓ DẤU đầy đủ, đúng chính tả (viết "kế hoạch", "kiểm tra", "tổ chức"; tuyệt đối không viết "ke hoach", "kiem tra").`;
 function fieldValue(){const v=$('#fieldSel').value;if(v==='__profile')return S.profileField||'';if(v==='__auto')return '';if(v==='__type')return $('#fieldTxt').value.trim();return v}
 function modeInstr(mode,field){
  const F=field?`bộ phận/lĩnh vực: "${field}"`:'lĩnh vực phù hợp nhất với câu hỏi (tự chọn và nêu rõ lĩnh vực đã chọn)';
@@ -487,7 +489,7 @@ function buildMessages(mode,q,hits,field,prev,maxTok){
  return {msgs,used}}
 
 /* ======================= Hiển thị markdown đơn giản ======================= */
-function md(s){const L=esc(s).split('\n');let h='',list=null;
+function md(s){const L=esc(String(s??'').normalize('NFC')).split('\n');let h='',list=null;
  const inl=t=>t.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/(^|\s)\*(\S.+?)\*(?=\s|$)/g,'$1<i>$2</i>').replace(/\[(\d{1,2})\]/g,'<span class="cite" data-n="$1">[$1]</span>');
  const close=()=>{if(list){h+=`</${list}>`;list=null}};
  for(let ln of L){const t=ln.trim();let m;
@@ -549,11 +551,13 @@ const MODE_NAME={traloi:'Trả lời theo giáo trình',phantich:'Phân tích c�
 function qaCard(rec,live){const el=document.createElement('div');el.className='card qa';
  el.innerHTML=`<div class="qtext">${esc(rec.q)}</div><div class="meta">${MODE_NAME[rec.mode]||''}${rec.field?' · Lĩnh vực: '+esc(rec.field):''}${rec.nSel?' · Trong '+rec.nSel+' tài liệu đã chọn':' · Dò tất cả tài liệu'}${rec.ai?' · '+esc(rec.ai):''}</div>
  <div class="ans ${live?'typing':''}"></div>
- <div class="row" style="margin-top:8px"><button class="sm fix b-copy">Sao chép</button><button class="sm fix b-word">Lưu Word</button><button class="sm fix b-src">Nguồn (${rec.hits.length})</button><span></span></div>
+ <div class="row" style="margin-top:8px"><button class="sm fix b-copy">Sao chép</button><button class="sm fix b-word">Lưu Word</button><button class="sm fix b-src">Nguồn (${rec.hits.length})</button><button class="sm fix dan b-del">Xoá</button><span></span></div>
  <div class="srcs" style="display:none">${srcHtml(rec.hits)}</div>`;
  const ans=el.querySelector('.ans');ans.innerHTML=md(rec.answer||'');
  el.querySelector('.b-copy').onclick=()=>copyText(rec.answer+'\n\nNguồn:\n'+rec.hits.map((h,i)=>`[${i+1}] ${h.docName||''}${h.head?' — '+h.head:''}${h.page?' — tr.'+h.page:''}`).join('\n'));
  el.querySelector('.b-word').onclick=()=>saveWord(rec);
+ el.querySelector('.b-del').onclick=async()=>{if(!confirm('Xoá câu hỏi này khỏi lịch sử?'))return;await DB.del('hist',rec.id);if(lastQA&&lastQA.id===rec.id)lastQA=null;document.querySelectorAll(`[data-rid="${rec.id}"]`).forEach(x=>x.remove());updateAnsBar()};
+ el.dataset.rid=rec.id;
  el.querySelector('.b-src').onclick=()=>{const s=el.querySelector('.srcs');s.style.display=s.style.display==='none'?'block':'none'};
  el.addEventListener('click',e=>{const c=e.target.closest('.cite');if(c){const s=el.querySelector('.srcs');s.style.display='block';const x=s.querySelector(`.src[data-i="${c.dataset.n}"]`);if(x){x.classList.add('open');x.scrollIntoView({behavior:'smooth',block:'center'})}}
   const sr=e.target.closest('.src');if(sr&&!c)sr.classList.toggle('open')});
@@ -568,14 +572,14 @@ async function ask(){
  const rec={id:uid('h'),q,mode:MODE,field,at:Date.now(),answer:'',hits:[],ai:AI.kind==='none'?'':AI.label,nSel:selS.size};
  if(AI.kind==='none'){rec.hits=hits.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
   rec.answer=hits.length?`**Chưa có mô hình AI** — dưới đây là ${hits.length} đoạn giáo trình liên quan nhất (bấm vào từng đoạn để xem đầy đủ):\n\n`+hits.map((h,i)=>`- [${i+1}] ${(h.head||(LIB.docMap.get(h.docId)||{}).name||'')}: ${h.text.slice(0,260).replace(/\n/g,' ')}…`).join('\n'):'Không tìm thấy đoạn nào trong giáo trình khớp với câu hỏi.';
-  const el=qaCard(rec);$('#answers').prepend(el);el.querySelector('.srcs').style.display='block';await DB.put('hist',rec);lastQA=rec;return}
+  const el=qaCard(rec);$('#answers').prepend(el);updateAnsBar();el.querySelector('.srcs').style.display='block';await DB.put('hist',rec);lastQA=rec;return}
  const prev=$('#followUp').checked&&lastQA?lastQA:null;
  const {msgs,used}=buildMessages(MODE,q,hits,field,prev,maxTok);
  rec.hits=used.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
- const el=qaCard(rec,true);$('#answers').prepend(el);const ans=el.querySelector('.ans');
+ const el=qaCard(rec,true);$('#answers').prepend(el);updateAnsBar();const ans=el.querySelector('.ans');
  busy=true;$('#btnAsk').disabled=true;$('#btnStop').style.display='';ans.innerHTML='<p class="mu">Đang suy nghĩ… (máy yếu có thể mất 10–60 giây cho chữ đầu tiên)</p>';
  let last=0;
- try{const out=await AI.chat(msgs,{maxTokens:maxTok,temperature:+S.temp||0.3,onToken:t=>{rec.answer=t;const n=Date.now();if(n-last>120){last=n;ans.innerHTML=md(t)}}});rec.answer=out||rec.answer}
+ try{const out=await AI.chat(msgs,{maxTokens:maxTok,temperature:+S.temp||0.3,onToken:t=>{rec.answer=t;const n=Date.now();if(n-last>120){last=n;ans.innerHTML=md(t)}}});rec.answer=(out||rec.answer).normalize('NFC')}
  catch(e){rec.answer=(rec.answer?rec.answer+'\n\n':'')+'⚠ Lỗi: '+(e.message||e)}
  ans.classList.remove('typing');ans.innerHTML=md(rec.answer||'(không có trả lời)');
  busy=false;$('#btnAsk').disabled=false;$('#btnStop').style.display='none';
@@ -628,9 +632,11 @@ async function renderHist(){const all=(await DB.all('hist')).sort((a,b)=>b.at-a.
  const list=all.filter(r=>!f||foldS((r.q+' '+r.answer).toLowerCase()).includes(f)).slice(0,100);
  if(!list.length){box.innerHTML='<p class="mu" style="text-align:center">Chưa có câu hỏi nào.</p>';return}
  for(const r of list){const el=qaCard(r);const m=el.querySelector('.meta');m.textContent=new Date(r.at).toLocaleString('vi-VN')+' · '+m.textContent;
-  const del=document.createElement('button');del.className='sm fix dan';del.textContent='Xoá';del.onclick=async()=>{await DB.del('hist',r.id);el.remove()};el.querySelector('.row').insertBefore(del,el.querySelector('.row span'));box.append(el)}}
+box.append(el)}}
 $('#histFilter').oninput=renderHist;
-$('#btnClearHist').onclick=async()=>{if(confirm('Xoá toàn bộ lịch sử hỏi đáp?')){await DB.clear('hist');renderHist()}};
+function updateAnsBar(){$('#ansBar').style.display=$('#answers .qa')?'flex':'none'}
+$('#btnClearAns').onclick=async()=>{if(!confirm('Xoá toàn bộ câu đã hỏi và câu trả lời? (Không xoá tài liệu)'))return;await DB.clear('hist');lastQA=null;$$('#answers .qa').forEach(x=>x.remove());$('#hist').innerHTML='';updateAnsBar();toast('Đã xoá lịch sử đã hỏi')};
+$('#btnClearHist').onclick=async()=>{if(confirm('Xoá toàn bộ lịch sử hỏi đáp?')){await DB.clear('hist');lastQA=null;$$('#answers .qa').forEach(x=>x.remove());updateAnsBar();renderHist()}};
 
 /* ======================= CÀI ĐẶT ======================= */
 function fmtGB(b){return (b/1073741824).toFixed(2)+' GB'}
