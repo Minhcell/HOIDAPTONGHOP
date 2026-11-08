@@ -144,7 +144,7 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
     <label class="lb">Chọn file: Word (.docx, .doc), PDF (có chữ hoặc scan), ảnh chụp (.jpg, .png), .txt</label>
     <input type="file" id="files" multiple accept=".docx,.doc,.pdf,.txt,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,image/*,application/pdf">
     <label class="mu" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="forceOcr" style="width:auto"> Nhận dạng chữ (OCR) toàn bộ — dùng khi PDF hiện chữ lỗi font (TCVN3, VNI…)</label>
-    <div class="row" style="margin-top:8px"><button class="pri fix" id="btnAdd">Nạp vào hệ thống</button><span id="addStat" class="mu"></span></div>
+    <div class="row" style="margin-top:8px"><button class="pri fix" id="btnAdd">Nạp vào hệ thống</button><button class="fix dan" id="btnAddStop" style="display:none">Dừng</button><span id="addStat" class="mu"></span></div>
     <div class="prog" id="addProg" style="display:none"><div></div></div>
   </div>
   <div class="card">
@@ -311,7 +311,7 @@ function getOcr(){if(OCR)return Promise.resolve(OCR);if(OCR_INIT)return OCR_INIT
   OCR_N=sch.getNumWorkers();if(!OCR_N){OCR_INIT=null;throw new Error('Không khởi động được OCR')}
   OCR=sch;return sch})();
  return OCR_INIT}
-const OCR_MAX=2200; // cạnh dài tối đa (px) — đủ nét cho chữ in, nhanh hơn nhiều so với ảnh gốc 4000px
+const OCR_MAX=IS_ANDROID?1800:2200;let ADD_TOK={stop:false}; // cạnh dài tối đa (px) — đủ nét cho chữ in, nhanh hơn nhiều so với ảnh gốc 4000px
 async function prepImage(src){
  if(src instanceof HTMLCanvasElement)return src;
  try{const bm=await createImageBitmap(src);const k=Math.min(1,OCR_MAX/Math.max(bm.width,bm.height));
@@ -321,6 +321,16 @@ async function prepImage(src){
 async function ocrImage(src){const sch=await getOcr();const img=await prepImage(src);
  try{const r=await sch.addJob('recognize',img,{},{text:true,blocks:false,hocr:false,tsv:false});return (r.data.text||'').replace(/[ \t]+\n/g,'\n')}
  finally{if(img instanceof HTMLCanvasElement&&img!==src){img.width=img.height=0}}}
+/* Ghép các mảnh chữ của PDF theo vị trí thật: chỉ thêm dấu cách khi có khoảng trống thật (tránh "Nguy ễ n") */
+function pdfItemsToText(items){let out='',line='',lastEnd=null,lastY=null;
+ for(const it of items){const s=it.str||'';const tr=it.transform||[1,0,0,1,0,0];const x=tr[4],y=tr[5];const fh=Math.hypot(tr[2],tr[3])||it.height||10;
+  if(lastEnd!==null&&s){
+   if(Math.abs(y-lastY)>fh*0.6){out+=line.replace(/\s+$/,'')+'\n';line=''}
+   else{const gap=x-lastEnd;if(gap>fh*0.2&&!/\s$/.test(line)&&!/^\s/.test(s))line+=' '}}
+  line+=s;
+  if(s){lastEnd=x+(it.width||0);lastY=y}
+  if(it.hasEOL){out+=line.replace(/\s+$/,'')+'\n';line='';lastEnd=null}}
+ return (out+line).replace(/[ \t]{2,}/g,' ')}
 const isImgFile=f=>/\.(jpe?g|png|bmp|webp|tiff?|gif)$/i.test(f.name)||(f.type||'').startsWith('image/');
 function docBinaryText(buf){ // trích chữ gần đúng từ .doc (Word 97-2003)
  const u8=new Uint8Array(buf);const out=[];let cur='';
@@ -338,18 +348,18 @@ async function extractFile(file,force,prog){
  if(ext==='doc'){const t=docBinaryText(await file.arrayBuffer());if(t.trim().length<50)throw new Error('Không đọc được file .doc này — mở bằng Word, Lưu thành .docx rồi nạp lại');return [{page:null,text:t,approx:true}]}
  if(ext==='pdf'){const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;const N=pdf.numPages;const segs=new Array(N);const need=[];
   for(let p=1;p<=N;p++){let text='';
-   if(!force){const pg=await pdf.getPage(p);const tc=await pg.getTextContent();let line='';for(const it of tc.items){line+=it.str;if(it.hasEOL){text+=line+'\n';line=''}else if(it.str&&!/\s$/.test(it.str))line+=' '}text+=line;pg.cleanup()}
+   if(!force){const pg=await pdf.getPage(p);const tc=await pg.getTextContent();text=pdfItemsToText(tc.items);pg.cleanup()}
    if(force||text.replace(/\s/g,'').length<30||looksGarbled(text))need.push(p);else segs[p-1]={page:p,text};
    if(p%10===0||p===N)prog(`Đọc chữ trang ${p}/${N}`,need.length?0.05:p/N)}
   if(need.length){prog(`Khởi động OCR…`,0.05);await getOcr();let done=0,next=0;const t0=Date.now();
    const tick=()=>{const el=(Date.now()-t0)/1000;const left=done?Math.round(el/done*(need.length-done)):0;prog(`OCR ${done}/${need.length} trang · ${OCR_N} luồng song song${done?' · còn ~'+(left>90?Math.round(left/60)+' phút':left+' giây'):''}`,0.05+0.95*done/need.length)};tick();
-   const run=async()=>{while(next<need.length){const p=need[next++];const pg=await pdf.getPage(p);const v1=pg.getViewport({scale:1});
-     const sc=Math.max(1.2,Math.min(2.5,1700/Math.max(v1.width,v1.height)));const vp=pg.getViewport({scale:sc});
+   const tok=ADD_TOK;const run=async()=>{while(next<need.length){if(tok.stop)throw new Error('Đã dừng');const p=need[next++];const pg=await pdf.getPage(p);const v1=pg.getViewport({scale:1});
+     const sc=Math.max(1.1,Math.min(2.5,(IS_ANDROID?1500:1700)/Math.max(v1.width,v1.height)));const vp=pg.getViewport({scale:sc});
      const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
      await pg.render({canvasContext:cv.getContext('2d',{alpha:false}),viewport:vp}).promise;pg.cleanup();
      try{segs[p-1]={page:p,text:await ocrImage(cv)}}finally{cv.width=cv.height=0}
      done++;tick()}};
-   await Promise.all(Array.from({length:Math.min(OCR_N+1,need.length)},run))}
+   const rs=await Promise.allSettled(Array.from({length:Math.min(OCR_N+1,need.length)},run));const bad=rs.find(r=>r.status==='rejected');if(bad)throw bad.reason}
   return segs.filter(Boolean)}
  if(isImgFile(file)){prog('Nhận dạng chữ trong ảnh…',.3);const pre=PRE_OCR.get(file);PRE_OCR.delete(file);return [{page:null,text:await (pre||ocrImage(file))}]}
  throw new Error('Định dạng chưa hỗ trợ: .'+ext)}
@@ -610,12 +620,13 @@ $('#lib').onclick=async e=>{const tg=e.target.closest('[data-tg]');if(tg){const 
  if(b.dataset.fr){const f=LIB.folders.find(x=>x.id===b.dataset.fr);const n=prompt('Tên thư mục mới:',f.name);if(n&&n.trim()){f.name=n.trim();await DB.put('folders',f);refreshAll()}}
  if(b.dataset.fd){const f=LIB.folders.find(x=>x.id===b.dataset.fd);if(!confirm('Xoá thư mục "'+f.name+'"? (Tài liệu bên trong được giữ lại, chuyển sang "Chưa xếp thư mục")'))return;await DB.del('folders',f.id);for(const d of LIB.docs.filter(d=>d.folder===f.id)){d.folder='';await DB.put('docs',d)}await LIB.load();refreshAll()}};
 $('#lib').onchange=async e=>{const s=e.target.closest('select[data-mv]');if(!s||!s.value)return;const d=LIB.docMap.get(s.dataset.mv);d.folder=s.value==='__none'?'':s.value;await DB.put('docs',d);await LIB.load();refreshAll();toast('Đã chuyển thư mục')};
+$('#btnAddStop').onclick=()=>{ADD_TOK.stop=true;$('#addStat').textContent='Đang dừng… (chờ xong trang đang đọc)'};
 $('#btnNewFolder').onclick=async()=>{const n=prompt('Tên thư mục (VD: Lý luận chính trị, Giáo trình Kiểm tra Đảng):');if(!n||!n.trim())return;const f={id:uid('f'),name:n.trim()};await DB.put('folders',f);LIB.folders.push(f);renderAddFolder();$('#addFolder').value=f.id;refreshAll()};
 $('#btnAdd').onclick=async()=>{const files=[...$('#files').files];if(!files.length){toast('Chọn file trước');return}
- const btn=$('#btnAdd');btn.disabled=true;const st=$('#addStat'),pg=$('#addProg');pg.style.display='block';let ok=0,fail=[];
+ const btn=$('#btnAdd');btn.disabled=true;ADD_TOK={stop:false};const myTok=ADD_TOK;$('#btnAddStop').style.display='';const st=$('#addStat'),pg=$('#addProg');pg.style.display='block';let ok=0,fail=[];
  PRE_OCR.clear();const kick=async i=>{if(!files.slice(i).some(isImgFile))return;try{await getOcr()}catch(e){return}
   for(let j=i;j<files.length&&j<i+OCR_N+1;j++){const f=files[j];if(isImgFile(f)&&!PRE_OCR.has(f)){const pr=ocrImage(f);pr.catch(()=>{});PRE_OCR.set(f,pr)}}};
- for(let i=0;i<files.length;i++){const f=files[i];const base=i/files.length;
+ for(let i=0;i<files.length;i++){if(myTok.stop){fail.push('Đã dừng — còn '+(files.length-i)+' file chưa nạp');break}const f=files[i];const base=i/files.length;
   if(isImgFile(f))await kick(i);
   const prog=(m,x)=>{st.textContent=`(${i+1}/${files.length}) ${f.name}: ${m}`;pg.firstChild.style.width=((base+(x||0)/files.length)*100).toFixed(1)+'%'};
   try{prog('đang đọc…',0);const segs=await extractFile(f,$('#forceOcr').checked,prog);
@@ -625,7 +636,7 @@ $('#btnAdd').onclick=async()=>{const files=[...$('#files').files];if(!files.leng
    await DB.putMany('chunks',parts.map((c,j)=>({id:id+'_'+j,docId:id,idx:j,page:c.page,head:c.head,text:c.text})));await DB.put('docs',doc);ok++}
   catch(e){console.error(e);fail.push(f.name+': '+(e.message||e))}}
  pg.firstChild.style.width='100%';st.textContent='Đang lập chỉ mục…';await sleep(30);await LIB.load();refreshAll();
- st.textContent=`Đã nạp ${ok}/${files.length} file.`+(fail.length?' Lỗi: '+fail.join('; '):'');btn.disabled=false;$('#files').value='';setTimeout(()=>pg.style.display='none',1500)};
+ st.textContent=`Đã nạp ${ok}/${files.length} file.`+(fail.length?' Lỗi: '+fail.join('; '):'');btn.disabled=false;$('#btnAddStop').style.display='none';$('#files').value='';setTimeout(()=>pg.style.display='none',1500)};
 
 /* ======================= LỊCH SỬ ======================= */
 async function renderHist(){const all=(await DB.all('hist')).sort((a,b)=>b.at-a.at);const f=foldS($('#histFilter').value.toLowerCase().trim());const box=$('#hist');box.innerHTML='';
