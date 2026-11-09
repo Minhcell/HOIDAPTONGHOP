@@ -462,14 +462,18 @@ function fieldValue(){const v=$('#fieldSel').value;if(v==='__profile')return S.p
 function modeInstr(mode,field){
  const F=field?`bộ phận/lĩnh vực: "${field}"`:'lĩnh vực phù hợp nhất với câu hỏi (tự chọn và nêu rõ lĩnh vực đã chọn)';
  switch(mode){
-  case 'phantich':return `YÊU CẦU: Phân tích câu hỏi rồi trả lời, theo cấu trúc:
-### 1. Phân tích yêu cầu câu hỏi
-(Câu hỏi thuộc dạng gì: nêu khái niệm / trình bày / phân tích / so sánh / chứng minh / liên hệ; các vế cần trả lời; từ khoá trọng tâm.)
-### 2. Kiến thức giáo trình liên quan
-(Liệt kê các luận điểm chính trong tài liệu dùng để trả lời, kèm nguồn [n].)
-### 3. Dàn ý trả lời
-### 4. Bài trả lời hoàn chỉnh
-(Viết bám sát giáo trình, có nguồn [n].)`;
+  case 'phantich':return `YÊU CẦU: Đây là câu hỏi PHÂN TÍCH. Phân tích làm rõ vấn đề được hỏi, bám sát giáo trình, theo đúng cấu trúc:
+### 1. Khái niệm
+(Nêu khái niệm, định nghĩa của vấn đề được hỏi đúng như giáo trình [n]. Nếu vấn đề gồm nhiều khái niệm thì nêu từng khái niệm. Giáo trình không có định nghĩa thì nói rõ.)
+### 2. Phân tích nội dung
+(Trình bày các nội dung liên quan trong giáo trình để làm rõ vấn đề: nội dung, đặc điểm, vai trò, ý nghĩa, nguyên tắc, yêu cầu, mối quan hệ... — chỉ những mục giáo trình có. Mỗi luận điểm nêu ý chính rồi giải thích rõ, ghi nguồn [n].)
+### 3. Liên hệ thực tiễn
+(Liên hệ với ${F}, xuất phát từ các luận điểm ở mục 2:
+- Kết quả, ưu điểm đã đạt được.
+- Hạn chế, tồn tại và nguyên nhân.
+- Giải pháp, phương hướng — mỗi giải pháp gắn với một luận điểm giáo trình [n].
+- Trách nhiệm của bản thân.)
+Cuối bài ghi một dòng: "Lưu ý: ví dụ thực tiễn là gợi ý, cần thay bằng số liệu, sự việc cụ thể tại đơn vị."`;
   case 'lienhe':return `YÊU CẦU: Trả lời đầy đủ phần lý luận bám sát giáo trình, sau đó liên hệ thực tế với ${F}. Cấu trúc:
 ### I. Cơ sở lý luận (theo giáo trình)
 ### II. Liên hệ thực tế
@@ -486,7 +490,11 @@ Cuối bài ghi một dòng: "Lưu ý: ví dụ thực tế là gợi ý, cần 
 ### Câu hỏi gợi mở để tự liên hệ
 (5-8 câu hỏi giúp người dùng nhớ lại sự việc, số liệu thật tại đơn vị.)
 ### Ví dụ minh hoạ (ngắn)`;
-  default:return `YÊU CẦU: Trả lời câu hỏi bám sát nội dung giáo trình, đầy đủ các ý, có nguồn [n]. Không liên hệ thực tế trừ khi câu hỏi yêu cầu.`}}
+  default:return `YÊU CẦU: Trả lời ĐÚNG và ĐỦ nội dung câu hỏi yêu cầu, chỉ dựa vào ĐOẠN TÀI LIỆU:
+- Xác định câu hỏi hỏi gì (khái niệm, nội dung, đặc điểm, vai trò, nguyên tắc, nhiệm vụ, quy trình...) và chỉ trả lời đúng phần đó, không lan man sang nội dung khác.
+- Giữ thuật ngữ, cách diễn đạt và cách chia ý của giáo trình; giáo trình liệt kê bao nhiêu ý thì nêu đủ bấy nhiêu ý, theo đúng thứ tự.
+- Mỗi ý ghi nguồn [n]. Không liên hệ thực tế, không bình luận thêm.
+- Tài liệu chỉ có một phần câu trả lời thì trả lời phần có và nói rõ phần giáo trình chưa đề cập.`}}
 function estTok(s){return Math.ceil(s.length/2.6)}
 function buildMessages(mode,q,hits,field,prev,maxTok){
  const budget=Math.max(800,AI.ctx-maxTok-estTok(SYS)-estTok(q)-450-(prev?350:0));
@@ -512,7 +520,26 @@ function md(s){const L=esc(String(s??'').normalize('NFC')).split('\n');let h='',
 
 /* ======================= HỎI ĐÁP ======================= */
 let MODE=S.mode,lastQA=null,busy=false;
-function renderModes(){$$('#modes .chip').forEach(c=>c.classList.toggle('on',c.dataset.m===MODE));$('#fieldBox').style.display=(MODE==='lienhe'||MODE==='goiy')?'block':'none'}
+/* Tìm đoạn nêu KHÁI NIỆM / ĐỊNH NGHĨA cho từng khái niệm trong câu hỏi phân tích */
+function conceptTerms(q){let s=' '+q.toLowerCase().normalize('NFC')+' ';
+ s=s.replace(/liên hệ thực (tế|tiễn)[^.?!;]*/g,' ').replace(/(hãy|anh|chị|đồng chí|em)\s+/g,' ')
+  .replace(/(phân tích|làm rõ|luận giải|luận chứng|trình bày|nêu|cho biết|là gì|như thế nào|ra sao|tại sao|vì sao)/g,' ')
+  .replace(/(mối quan hệ( biện chứng)?|quan hệ( biện chứng)?)\s+giữa/g,' ').replace(/mối quan hệ( biện chứng)?/g,' ')
+  .replace(/(vai trò|ý nghĩa( phương pháp luận)?|nội dung|đặc điểm|bản chất|nguồn gốc|kết cấu|tầm quan trọng|nguyên tắc|quan điểm|khái niệm|định nghĩa|yêu cầu|nhiệm vụ)\s+(của|về)?/g,' ');
+ return [...new Set(s.split(/\s+(?:và|với)\s+|[,;.?!:()]/).map(t=>t.replace(/\s+/g,' ').trim()).filter(t=>t.length>=3&&t.split(' ').length<=6))].slice(0,3)}
+function conceptHits(q,selS){const out=[];
+ for(const term of conceptTerms(q)){const cand=new Map();
+  for(const qq of ['định nghĩa '+term,'khái niệm '+term,term+' là'])for(const c of LIB.search(qq,selS,8)){const o=cand.get(c.id);if(!o||o.score<c.score)cand.set(c.id,c)}
+  const tl=term.toLowerCase();const te=tl.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');let best=null,bs=-1;
+  const reStart=new RegExp('(^|[\\n.:;!?"“(-]\\s*)'+te+'\\s+là\\s','u');   // khái niệm đứng đầu câu rồi "là"
+  const reDefWord=new RegExp('(định nghĩa|khái niệm)[^.]{0,60}'+te,'u');
+  const reDefKind=new RegExp(te+'\\s+là\\s+(một\\s+)?(phạm trù|khái niệm|hình thức|sự phản ánh|toàn bộ|tổng thể|hệ thống|quá trình|hoạt động|tổng hợp|thuộc tính)','u');
+  for(const c of cand.values()){const t=c.text.toLowerCase();let s=c.score;
+   if(reStart.test(t))s+=14;if(reDefKind.test(t))s+=10;if(reDefWord.test(t))s+=5;if((c.head||'').toLowerCase().includes(tl))s+=2;
+   if(s>bs&&!out.some(x=>x.id===c.id)){bs=s;best=c}}
+  if(best)out.push(best)}
+ return out}
+function renderModes(){$$('#modes .chip').forEach(c=>c.classList.toggle('on',c.dataset.m===MODE));$('#fieldBox').style.display=(MODE==='lienhe'||MODE==='goiy'||MODE==='phantich')?'block':'none'}
 $('#modes').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;MODE=c.dataset.m;S.mode=MODE;saveSettings();renderModes()};
 function renderFieldSel(){const sel=$('#fieldSel');const cur=S.fieldSel;
  let o=`<option value="__profile">Theo hồ sơ của tôi${S.profileField?': '+esc(S.profileField):' (chưa khai — vào Cài đặt)'}</option><option value="__auto">Để app tự chọn lĩnh vực phù hợp</option><option value="__type">✎ Tự nhập lần này…</option>`;
@@ -557,9 +584,9 @@ $('#pkList').onchange=e=>{const c=e.target;if(c.dataset.doc)setSel([c.dataset.do
 function askInFolder(fid){S.selDocs=docsInFolder(fid).map(d=>d.id);saveSettings();PK_FOLDER=fid;renderPicker();$('nav button[data-t="ask"]').click();toast('Đã chọn '+S.selDocs.length+' tài liệu trong thư mục "'+(fid?folderName(fid):'Chưa xếp thư mục')+'"');$('#q').focus()}
 function srcHtml(hits){return hits.map((h,i)=>{const d=LIB.docMap.get(h.docId);const nm=h.docName||(d?d.name:'(tài liệu đã xoá)');
  return `<div class="src" data-i="${i+1}"><b>[${i+1}]</b> ${esc(nm)}${h.head?' <span class="mu">— '+esc(h.head)+'</span>':''}${h.page?' <span class="pill">tr. '+h.page+'</span>':''}<div class="mu">${esc(h.text.slice(0,140))}…</div><div class="tx">${esc(h.text)}</div></div>`}).join('')}
-const MODE_NAME={traloi:'Trả lời theo giáo trình',phantich:'Phân tích câu hỏi',lienhe:'Trả lời + liên hệ thực tế',goiy:'Gợi ý liên hệ thực tế'};
+const MODE_NAME={traloi:'Trả lời theo giáo trình',phantich:'Phân tích + liên hệ thực tiễn',lienhe:'Trả lời + liên hệ thực tế',goiy:'Gợi ý liên hệ thực tế'};
 function qaCard(rec,live){const el=document.createElement('div');el.className='card qa';
- el.innerHTML=`<div class="qtext">${esc(rec.q)}</div><div class="meta">${MODE_NAME[rec.mode]||''}${rec.field?' · Lĩnh vực: '+esc(rec.field):''}${rec.nSel?' · Trong '+rec.nSel+' tài liệu đã chọn':' · Dò tất cả tài liệu'}${rec.ai?' · '+esc(rec.ai):''}</div>
+ el.innerHTML=`<div class="qtext">${esc(rec.q)}</div><div class="meta">${MODE_NAME[rec.mode]||''}${rec.auto?' (tự nhận: câu hỏi phân tích)':''}${rec.field?' · Lĩnh vực: '+esc(rec.field):''}${rec.nSel?' · Trong '+rec.nSel+' tài liệu đã chọn':' · Dò tất cả tài liệu'}${rec.ai?' · '+esc(rec.ai):''}</div>
  <div class="ans ${live?'typing':''}"></div>
  <div class="row" style="margin-top:8px"><button class="sm fix b-copy">Sao chép</button><button class="sm fix b-word">Lưu Word</button><button class="sm fix b-src">Nguồn (${rec.hits.length})</button><button class="sm fix dan b-del">Xoá</button><span></span></div>
  <div class="srcs" style="display:none">${srcHtml(rec.hits)}</div>`;
@@ -575,16 +602,19 @@ function qaCard(rec,live){const el=document.createElement('div');el.className='c
 async function ask(){
  if(busy)return;const q=$('#q').value.trim();if(!q){toast('Nhập câu hỏi');return}
  if(!LIB.chunks.length){toast('Chưa có tài liệu — vào tab Tài liệu để nạp giáo trình');return}
- const field=(MODE==='lienhe'||MODE==='goiy')?fieldValue():'';
- const maxTok=S.maxTok||(AI.kind==='server'?1400:(MODE==='phantich'||MODE==='lienhe'?900:700));
+ const autoPT=MODE==='traloi'&&/(^|\s)(phan tich|lam ro|luan giai|luan chung)(\s|$|[,.:;?])/.test(foldS(q.toLowerCase()));
+ const em=autoPT?'phantich':MODE;
+ const field=(em==='lienhe'||em==='goiy'||em==='phantich')?fieldValue():'';
+ const maxTok=S.maxTok||(AI.kind==='server'?(em==='phantich'||em==='lienhe'?1800:1400):(em==='phantich'||em==='lienhe'?1000:700));
  const k=Math.max(2,Math.min(15,+S.topK||6));
- const selS=selectedSet();const hits=LIB.search(q,selS,k);
- const rec={id:uid('h'),q,mode:MODE,field,at:Date.now(),answer:'',hits:[],ai:AI.kind==='none'?'':AI.label,nSel:selS.size};
+ const selS=selectedSet();let hits=LIB.search(q,selS,k);
+ if(em==='phantich'){const cs=conceptHits(q,selS);if(cs.length)hits=[...cs,...hits.filter(x=>!cs.some(c=>c.id===x.id))]}
+ const rec={id:uid('h'),q,mode:em,auto:autoPT,field,at:Date.now(),answer:'',hits:[],ai:AI.kind==='none'?'':AI.label,nSel:selS.size};
  if(AI.kind==='none'){rec.hits=hits.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
   rec.answer=hits.length?`**Chưa có mô hình AI** — dưới đây là ${hits.length} đoạn giáo trình liên quan nhất (bấm vào từng đoạn để xem đầy đủ):\n\n`+hits.map((h,i)=>`- [${i+1}] ${(h.head||(LIB.docMap.get(h.docId)||{}).name||'')}: ${h.text.slice(0,260).replace(/\n/g,' ')}…`).join('\n'):'Không tìm thấy đoạn nào trong giáo trình khớp với câu hỏi.';
   const el=qaCard(rec);$('#answers').prepend(el);updateAnsBar();el.querySelector('.srcs').style.display='block';await DB.put('hist',rec);lastQA=rec;updateAnsBar();return}
  const prev=$('#followUp').checked&&lastQA?lastQA:null;
- const {msgs,used}=buildMessages(MODE,q,hits,field,prev,maxTok);
+ const {msgs,used}=buildMessages(em,q,hits,field,prev,maxTok);
  rec.hits=used.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
  const el=qaCard(rec,true);$('#answers').prepend(el);updateAnsBar();const ans=el.querySelector('.ans');
  busy=true;$('#btnAsk').disabled=true;$('#btnStop').style.display='';ans.innerHTML='<p class="mu">Đang suy nghĩ… (máy yếu có thể mất 10–60 giây cho chữ đầu tiên)</p>';
