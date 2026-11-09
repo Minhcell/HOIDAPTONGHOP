@@ -108,7 +108,8 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
     </div>
     <label class="lb">Kiểu trả lời</label>
     <div class="chips" id="modes">
-      <span class="chip on" data-m="traloi">Trả lời theo giáo trình</span>
+      <span class="chip on" data-m="baithi">📝 Bài làm hoàn chỉnh (bài thi)</span>
+      <span class="chip" data-m="traloi">Trả lời theo giáo trình</span>
       <span class="chip" data-m="phantich">Phân tích câu hỏi</span>
       <span class="chip" data-m="lienhe">Trả lời + liên hệ thực tế</span>
       <span class="chip" data-m="goiy">Gợi ý ý liên hệ thực tế</span>
@@ -203,6 +204,7 @@ label.lb{display:block;font-size:13px;color:var(--mu);margin:8px 0 4px}
       <div><label class="lb">Số đoạn giáo trình tham khảo</label><input type="number" id="topK" min="2" max="15"></div>
       <div><label class="lb">Độ dài trả lời tối đa (token)</label><input type="number" id="maxTok" min="200" max="4000" step="100"></div>
       <div><label class="lb">Độ sáng tạo (0–1)</label><input type="number" id="temp" min="0" max="1" step="0.1"></div>
+      <div><label class="lb">Tốc độ trả lời</label><select id="speed"><option value="fast">Nhanh (ít tài liệu, trả lời nhanh nhất)</option><option value="balanced">Cân bằng</option><option value="full">Đầy đủ (nhiều tài liệu, chậm hơn)</option></select></div>
     </div>
     <button class="fix" id="btnSaveAns" style="margin-top:8px">Lưu</button>
   </div>
@@ -257,7 +259,7 @@ const DB={db:null,
 
 /* ======================= Cài đặt ======================= */
 const PRESET_FIELDS=['Hành chính – Văn phòng','Tổ chức – Cán bộ','Kiểm tra, giám sát của Đảng','Tuyên giáo – Dân vận','Thi đua – Khen thưởng','Cải cách hành chính','Chính quyền cơ sở (xã, phường)','Tài chính – Kế toán','Giáo dục – Đào tạo','Y tế','Công an – An ninh trật tự','Quân sự – Quốc phòng','Viễn thông – Công nghệ thông tin','Tư pháp – Pháp chế','Kinh tế – Doanh nghiệp','Nông nghiệp – Nông thôn','Lao động – Thương binh – Xã hội','Văn hóa – Thông tin'];
-const DEF={backend:'auto',serverUrl:'',topK:6,maxTok:0,temp:0.3,profileField:'',customFields:[],useGpu:false,mode:'traloi',fieldSel:'__profile',selDocs:[],openFolders:{},localModel:''};
+const DEF={backend:'auto',serverUrl:'',topK:6,maxTok:0,temp:0.3,speed:'fast',profileField:'',customFields:[],useGpu:false,mode:'baithi',fieldSel:'__profile',selDocs:[],openFolders:{},localModel:''};
 let S={...DEF};
 async function loadSettings(){const v=await DB.get('kv','settings');S={...DEF,...(v||{})}}
 function saveSettings(){return DB.put('kv',S,'settings')}
@@ -283,10 +285,13 @@ class Index{
 const LIB={folders:[],docs:[],chunks:[],ix:null,ixF:null,docMap:new Map(),
  async load(){this.folders=await DB.all('folders');this.docs=await DB.all('docs');this.chunks=await DB.all('chunks');
   this.chunks.sort((a,b)=>a.docId<b.docId?-1:a.docId>b.docId?1:a.idx-b.idx);this.rebuild()},
- rebuild(){this.docMap=new Map(this.docs.map(d=>[d.id,d]));this.ix=new Index(false);this.ix.build(this.chunks);this.ixF=null},
+ rebuild(){this.docMap=new Map(this.docs.map(d=>[d.id,d]));this.ix=new Index(false);this.ix.build(this.chunks);this.ixF=null;
+  // đoạn "câu hỏi ôn tập" cuối chương: nhiều dòng dạng "1. Trình bày… / Phân tích…?" -> giảm ưu tiên
+  this.qPen=this.chunks.map(c=>{const n=(c.text.match(/(^|\n)\s*\d{1,2}[.)]\s*(Trình bày|Phân tích|Nêu|Làm rõ|Hãy|Tại sao|Vì sao|Chứng minh|So sánh|Thế nào|Khái niệm|Câu hỏi)[^\n]*/gi)||[]).length;const hq=/câu hỏi ôn tập|câu hỏi thảo luận/i.test(c.text+' '+(c.head||''));return (n>=2||hq)?0.25:1})},
  search(q,docSet,k){const allowDocs=docSet&&docSet.size?docSet:null;const allow=allowDocs?i=>allowDocs.has(this.chunks[i].docId):null;
   let r=this.ix.search(q,allow,k*2);
   if(!hasAccent(q)||r.length<2){if(!this.ixF){this.ixF=new Index(true);this.ixF.build(this.chunks)}const r2=this.ixF.search(q,allow,k*2);const m=new Map(r.map(x=>[x[0],x[1]]));r2.forEach(([i,s])=>m.set(i,Math.max(m.get(i)||0,s*.9)));r=[...m.entries()].sort((a,b)=>b[1]-a[1])}
+  if(this.qPen)r=r.map(([i,s])=>[i,s*this.qPen[i]]).sort((a,b)=>b[1]-a[1]);
   return r.slice(0,k).map(([i,s])=>({...this.chunks[i],score:s,ci:i}))}
 };
 function selectedSet(){const ok=new Set(LIB.docs.map(d=>d.id));S.selDocs=(S.selDocs||[]).filter(id=>ok.has(id));return new Set(S.selDocs)}
@@ -401,10 +406,12 @@ const AI={kind:'none',label:'',ctx:4096,wl:null,ready:false,
  async pingServer(url){url=url.replace(/\/+$/,'');
   try{const j=IS_ANDROID?JSON.parse(await lanGet(url+'/props')||'{}'):await (await fetchT(url+'/props',3000)).json();
    const n=j.n_ctx||(j.default_generation_settings&&j.default_generation_settings.n_ctx)||8192;this.ctx=n;
-   let mn=(j.model_path||'').split(/[\\/]/).pop()||'máy chủ';this.serverUrl=url;this.set('server','AI máy chủ: '+mn.replace(/\.gguf$/,''));return true}catch(e){return false}},
+   let mn=(j.model_path||'').split(/[\\/]/).pop()||'máy chủ';this.srvModel=mn;this.serverUrl=url;this.set('server','AI máy chủ: '+mn.replace(/\.gguf$/,''));return true}catch(e){return false}},
  ram(){if(IS_ANDROID){try{return AndroidBridge.totalRam()/1073741824}catch(e){}}return navigator.deviceMemory||0},
  localModels(){if(IS_ANDROID){try{return JSON.parse(AndroidBridge.listModels())}catch(e){return []}}return this._picked?[{name:this._picked.name,size:this._picked.size}]:[]},
- pickBest(list){if(!list.length)return null;const ram=this.ram()||4;const lim=ram*1073741824*0.38;
+ modelName(){return this.kind==='server'?(this.srvModel||''):(this.kind==='local'?(S.localModel||''):'')},
+ hybridThink(){const n=this.modelName().toLowerCase();return /qwen3/.test(n)&&!/2507|instruct/.test(n)},
+ pickBest(list){if(!list.length)return null;const ram=this.ram()||4;const lim=Math.min(ram*1073741824*0.38,IS_ANDROID?1.6*1073741824:1e15);
   const fit=list.filter(m=>m.size<lim).sort((a,b)=>b.size-a.size);return fit[0]||list.slice().sort((a,b)=>a.size-b.size)[0]},
  async autoLocal(){const list=this.localModels();if(!list.length)return false;
   let m=list.find(x=>x.name===S.localModel)||this.pickBest(list);if(!m)return false;
@@ -424,7 +431,7 @@ const AI={kind:'none',label:'',ctx:4096,wl:null,ready:false,
  abortCtl:null,
  async chat(messages,{onToken,maxTokens,temperature}){
   this.abortCtl=new AbortController();const sig=this.abortCtl.signal;let full='';
-  const body={model:'local',messages,stream:true,max_tokens:maxTokens,temperature,top_p:0.9,top_k:40,min_p:0.05,repeat_penalty:1.0,frequency_penalty:0,presence_penalty:0};
+  const body={model:'local',messages,stream:true,max_tokens:maxTokens,temperature,top_p:0.9,top_k:40,min_p:0.05,repeat_penalty:1.0,frequency_penalty:0,presence_penalty:0,cache_prompt:true,chat_template_kwargs:{enable_thinking:false}};
   if(this.kind==='server'){
    if(IS_ANDROID){return await lanChat(this.serverUrl+'/v1/chat/completions',body,t=>{full+=t;onToken(full)},sig).then(()=>full)}
    const r=await fetch(this.serverUrl+'/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:sig});
@@ -459,21 +466,42 @@ Quy tắc bắt buộc:
 5. Trình bày rõ ràng, có đề mục (dùng ### cho đề mục), gạch đầu dòng khi liệt kê, văn phong chuẩn mực như bài làm, bài thu hoạch.
 6. Luôn viết tiếng Việt CÓ DẤU đầy đủ, đúng chính tả (viết "kế hoạch", "kiểm tra", "tổ chức"; tuyệt đối không viết "ke hoach", "kiem tra").`;
 function fieldValue(){const v=$('#fieldSel').value;if(v==='__profile')return S.profileField||'';if(v==='__auto')return '';if(v==='__type')return $('#fieldTxt').value.trim();return v}
-function modeInstr(mode,field){
+/* ---- Bài làm hoàn chỉnh như bài thi tự luận: bố cục theo dạng câu hỏi ---- */
+function essayInstr(q,field,forceAnalysis){const f=foldS(q.toLowerCase());const isPT=forceAnalysis||/(phan tich|lam ro|luan giai)/.test(f);
+ let body;
+ if(isPT)body=`#### 2. Phân tích nội dung
+(Đây là câu hỏi PHÂN TÍCH. Chia vấn đề thành các luận điểm theo giáo trình (a, b, c…). Mỗi luận điểm: nêu luận điểm → phân tích, giải thích làm rõ → dẫn chứng, ví dụ từ giáo trình [n] → nhận xét, đánh giá. Làm rõ mối liên hệ giữa các luận điểm; nếu là mối quan hệ giữa hai mặt thì phân tích vai trò của từng mặt và sự tác động qua lại.)`;
+ else if(/(vi sao|tai sao|giai thich|do dau|ly do|vi le gi)/.test(f))body=`#### 2. Lý giải vì sao
+(Đây là câu hỏi "vì sao": nêu lần lượt TỪNG LÝ DO, CĂN CỨ theo giáo trình — "Thứ nhất…", "Thứ hai…", "Thứ ba…". Mỗi lý do: nêu luận điểm → giải thích rõ → dẫn chứng, ví dụ từ giáo trình [n]. Các lý do phải trực tiếp chứng minh cho nhận định trong câu hỏi.)`;
+ else if(/(so sanh|phan biet|giong va khac|diem giong|diem khac)/.test(f))body=`#### 2. So sánh
+(a) Điểm giống nhau; (b) Điểm khác nhau — so sánh theo từng tiêu chí (khái niệm, bản chất, đặc điểm, vai trò…); (c) Mối quan hệ giữa chúng. Mỗi ý có nguồn [n].)`;
+ else if(/(chung minh|luan chung|tai sao noi|vi sao noi)/.test(f))body=`#### 2. Chứng minh
+(Nêu luận điểm cần chứng minh, sau đó đưa ra lần lượt các luận cứ, luận chứng theo giáo trình [n]; mỗi luận cứ giải thích rõ và có dẫn chứng.)`;
+ else body=`#### 2. Nội dung chính
+(Trình bày đầy đủ, có hệ thống các nội dung câu hỏi yêu cầu, đúng thứ tự và cách chia ý của giáo trình; mỗi ý có giải thích ngắn và nguồn [n].)`;
+ const lh=isPT||/(lien he|van dung|thuc tien|thuc te|ban than|don vi|dia phuong|co quan)/.test(f);
+ const F=field?`bộ phận/lĩnh vực "${field}"`:'thực tiễn công tác, học tập của bản thân';
+ return `YÊU CẦU: Viết thành MỘT BÀI LÀM HOÀN CHỈNH như bài thi tự luận, trả lời đúng trọng tâm câu hỏi, bám sát giáo trình.
+- Văn phong bài thi: lập luận chặt chẽ, câu văn liền mạch, chuẩn mực; diễn đạt lại bằng lời văn của bài làm nhưng GIỮ ĐÚNG khái niệm, định nghĩa, thuật ngữ và luận điểm của giáo trình; ghi nguồn [n] sau ý lấy từ giáo trình.
+- Không chép nguyên đoạn dài, không lan sang nội dung câu hỏi không hỏi.
+Bố cục bắt buộc:
+### Đặt vấn đề
+(3–5 câu: dẫn dắt vào vấn đề, nêu vị trí, tầm quan trọng của vấn đề và khẳng định ngắn gọn nhận định mà câu hỏi đặt ra.)
+### Giải quyết vấn đề
+#### 1. Cơ sở lý luận
+(Nêu khái niệm, định nghĩa các phạm trù có trong câu hỏi đúng như giáo trình [n].)
+${body}
+#### 3. Ý nghĩa
+(Ý nghĩa lý luận, ý nghĩa phương pháp luận hoặc thực tiễn rút ra — theo giáo trình nếu có [n].)${lh?`
+#### 4. Liên hệ thực tiễn
+(Liên hệ với ${F}: kết quả, hạn chế và nguyên nhân, giải pháp gắn với luận điểm giáo trình [n], trách nhiệm bản thân. Ví dụ là gợi ý, cần thay bằng sự việc cụ thể.)`:''}
+### Kết luận
+(2–4 câu: khẳng định lại nhận định của câu hỏi và ý nghĩa của vấn đề.)`}
+function modeInstr(mode,field,q){
  const F=field?`bộ phận/lĩnh vực: "${field}"`:'lĩnh vực phù hợp nhất với câu hỏi (tự chọn và nêu rõ lĩnh vực đã chọn)';
  switch(mode){
-  case 'phantich':return `YÊU CẦU: Đây là câu hỏi PHÂN TÍCH. Phân tích làm rõ vấn đề được hỏi, bám sát giáo trình, theo đúng cấu trúc:
-### 1. Khái niệm
-(Nêu khái niệm, định nghĩa của vấn đề được hỏi đúng như giáo trình [n]. Nếu vấn đề gồm nhiều khái niệm thì nêu từng khái niệm. Giáo trình không có định nghĩa thì nói rõ.)
-### 2. Phân tích nội dung
-(Trình bày các nội dung liên quan trong giáo trình để làm rõ vấn đề: nội dung, đặc điểm, vai trò, ý nghĩa, nguyên tắc, yêu cầu, mối quan hệ... — chỉ những mục giáo trình có. Mỗi luận điểm nêu ý chính rồi giải thích rõ, ghi nguồn [n].)
-### 3. Liên hệ thực tiễn
-(Liên hệ với ${F}, xuất phát từ các luận điểm ở mục 2:
-- Kết quả, ưu điểm đã đạt được.
-- Hạn chế, tồn tại và nguyên nhân.
-- Giải pháp, phương hướng — mỗi giải pháp gắn với một luận điểm giáo trình [n].
-- Trách nhiệm của bản thân.)
-Cuối bài ghi một dòng: "Lưu ý: ví dụ thực tiễn là gợi ý, cần thay bằng số liệu, sự việc cụ thể tại đơn vị."`;
+  case 'baithi':return essayInstr(q||'',field);
+  case 'phantich':return essayInstr(q||'',field,true);
   case 'lienhe':return `YÊU CẦU: Trả lời đầy đủ phần lý luận bám sát giáo trình, sau đó liên hệ thực tế với ${F}. Cấu trúc:
 ### I. Cơ sở lý luận (theo giáo trình)
 ### II. Liên hệ thực tế
@@ -495,15 +523,17 @@ Cuối bài ghi một dòng: "Lưu ý: ví dụ thực tế là gợi ý, cần 
 - Giữ thuật ngữ, cách diễn đạt và cách chia ý của giáo trình; giáo trình liệt kê bao nhiêu ý thì nêu đủ bấy nhiêu ý, theo đúng thứ tự.
 - Mỗi ý ghi nguồn [n]. Không liên hệ thực tế, không bình luận thêm.
 - Tài liệu chỉ có một phần câu trả lời thì trả lời phần có và nói rõ phần giáo trình chưa đề cập.`}}
+function stripThink(s){s=String(s||'');s=s.replace(/<think>[\s\S]*?<\/think>\s*/g,'');const i=s.indexOf('<think>');if(i>=0)s=s.slice(0,i);return s.replace(/^\s+/,'')}
 function estTok(s){return Math.ceil(s.length/2.6)}
 function buildMessages(mode,q,hits,field,prev,maxTok){
- const budget=Math.max(800,AI.ctx-maxTok-estTok(SYS)-estTok(q)-450-(prev?350:0));
+ const capT={fast:[1500,2400],balanced:[2600,3600],full:[1e9,1e9]}[S.speed||'fast']||[1500,2400];
+ const budget=Math.min(mode==='traloi'?capT[0]:capT[1],Math.max(800,AI.ctx-maxTok-estTok(SYS)-estTok(q)-450-(prev?350:0)));
  let ctx='',used=[];
  for(const h of hits){const d=LIB.docMap.get(h.docId);const tag=`[${used.length+1}] (${d?d.name:'?'}${h.head?' — '+h.head:''}${h.page?' — tr.'+h.page:''})\n`;const piece=tag+h.text+'\n\n';
   if(estTok(ctx+piece)>budget){if(used.length===0){ctx+=tag+h.text.slice(0,Math.floor(budget*2.4))+'\n\n';used.push(h)}break}ctx+=piece;used.push(h)}
  const msgs=[{role:'system',content:SYS}];
  if(prev){msgs.push({role:'user',content:prev.q});msgs.push({role:'assistant',content:prev.answer.slice(0,900)})}
- msgs.push({role:'user',content:`ĐOẠN TÀI LIỆU:\n${ctx||'(không tìm thấy đoạn nào phù hợp)'}\n---\nCÂU HỎI: ${q}\n\n${modeInstr(mode,field)}`});
+ msgs.push({role:'user',content:`ĐOẠN TÀI LIỆU:\n${ctx||'(không tìm thấy đoạn nào phù hợp)'}\n---\nCÂU HỎI: ${q}\n\n${modeInstr(mode,field,q)}`+(AI.hybridThink()?' /no_think':'')});
  return {msgs,used}}
 
 /* ======================= Hiển thị markdown đơn giản ======================= */
@@ -523,10 +553,10 @@ let MODE=S.mode,lastQA=null,busy=false;
 /* Tìm đoạn nêu KHÁI NIỆM / ĐỊNH NGHĨA cho từng khái niệm trong câu hỏi phân tích */
 function conceptTerms(q){let s=' '+q.toLowerCase().normalize('NFC')+' ';
  s=s.replace(/liên hệ thực (tế|tiễn)[^.?!;]*/g,' ').replace(/(hãy|anh|chị|đồng chí|em)\s+/g,' ')
-  .replace(/(phân tích|làm rõ|luận giải|luận chứng|trình bày|nêu|cho biết|là gì|như thế nào|ra sao|tại sao|vì sao)/g,' ')
+  .replace(/(phân tích|làm rõ|luận giải|luận chứng|chứng minh|so sánh|phân biệt|giải thích|trình bày|nêu|cho biết|là gì|như thế nào|ra sao|tại sao|vì sao)/g,' ')
   .replace(/(mối quan hệ( biện chứng)?|quan hệ( biện chứng)?)\s+giữa/g,' ').replace(/mối quan hệ( biện chứng)?/g,' ')
   .replace(/(vai trò|ý nghĩa( phương pháp luận)?|nội dung|đặc điểm|bản chất|nguồn gốc|kết cấu|tầm quan trọng|nguyên tắc|quan điểm|khái niệm|định nghĩa|yêu cầu|nhiệm vụ)\s+(của|về)?/g,' ');
- return [...new Set(s.split(/\s+(?:và|với)\s+|[,;.?!:()]/).map(t=>t.replace(/\s+/g,' ').trim()).filter(t=>t.length>=3&&t.split(' ').length<=6))].slice(0,3)}
+ return [...new Set(s.split(/\s+(?:và|với|là)\s+|[,;.?!:()]/).map(t=>t.replace(/\s+/g,' ').trim()).filter(t=>t.length>=3&&t.split(' ').length<=8))].slice(0,3)}
 function conceptHits(q,selS){const out=[];
  for(const term of conceptTerms(q)){const cand=new Map();
   for(const qq of ['định nghĩa '+term,'khái niệm '+term,term+' là'])for(const c of LIB.search(qq,selS,8)){const o=cand.get(c.id);if(!o||o.score<c.score)cand.set(c.id,c)}
@@ -539,7 +569,7 @@ function conceptHits(q,selS){const out=[];
    if(s>bs&&!out.some(x=>x.id===c.id)){bs=s;best=c}}
   if(best)out.push(best)}
  return out}
-function renderModes(){$$('#modes .chip').forEach(c=>c.classList.toggle('on',c.dataset.m===MODE));$('#fieldBox').style.display=(MODE==='lienhe'||MODE==='goiy'||MODE==='phantich')?'block':'none'}
+function renderModes(){$$('#modes .chip').forEach(c=>c.classList.toggle('on',c.dataset.m===MODE));$('#fieldBox').style.display=(MODE==='lienhe'||MODE==='goiy'||MODE==='phantich'||MODE==='baithi')?'block':'none'}
 $('#modes').onclick=e=>{const c=e.target.closest('.chip');if(!c)return;MODE=c.dataset.m;S.mode=MODE;saveSettings();renderModes()};
 function renderFieldSel(){const sel=$('#fieldSel');const cur=S.fieldSel;
  let o=`<option value="__profile">Theo hồ sơ của tôi${S.profileField?': '+esc(S.profileField):' (chưa khai — vào Cài đặt)'}</option><option value="__auto">Để app tự chọn lĩnh vực phù hợp</option><option value="__type">✎ Tự nhập lần này…</option>`;
@@ -584,9 +614,9 @@ $('#pkList').onchange=e=>{const c=e.target;if(c.dataset.doc)setSel([c.dataset.do
 function askInFolder(fid){S.selDocs=docsInFolder(fid).map(d=>d.id);saveSettings();PK_FOLDER=fid;renderPicker();$('nav button[data-t="ask"]').click();toast('Đã chọn '+S.selDocs.length+' tài liệu trong thư mục "'+(fid?folderName(fid):'Chưa xếp thư mục')+'"');$('#q').focus()}
 function srcHtml(hits){return hits.map((h,i)=>{const d=LIB.docMap.get(h.docId);const nm=h.docName||(d?d.name:'(tài liệu đã xoá)');
  return `<div class="src" data-i="${i+1}"><b>[${i+1}]</b> ${esc(nm)}${h.head?' <span class="mu">— '+esc(h.head)+'</span>':''}${h.page?' <span class="pill">tr. '+h.page+'</span>':''}<div class="mu">${esc(h.text.slice(0,140))}…</div><div class="tx">${esc(h.text)}</div></div>`}).join('')}
-const MODE_NAME={traloi:'Trả lời theo giáo trình',phantich:'Phân tích + liên hệ thực tiễn',lienhe:'Trả lời + liên hệ thực tế',goiy:'Gợi ý liên hệ thực tế'};
+const MODE_NAME={baithi:'Bài làm hoàn chỉnh',traloi:'Trả lời theo giáo trình',phantich:'Bài thi phân tích + liên hệ thực tiễn',lienhe:'Trả lời + liên hệ thực tế',goiy:'Gợi ý liên hệ thực tế'};
 function qaCard(rec,live){const el=document.createElement('div');el.className='card qa';
- el.innerHTML=`<div class="qtext">${esc(rec.q)}</div><div class="meta">${MODE_NAME[rec.mode]||''}${rec.auto?' (tự nhận: câu hỏi phân tích)':''}${rec.field?' · Lĩnh vực: '+esc(rec.field):''}${rec.nSel?' · Trong '+rec.nSel+' tài liệu đã chọn':' · Dò tất cả tài liệu'}${rec.ai?' · '+esc(rec.ai):''}</div>
+ el.innerHTML=`<div class="qtext">${esc(rec.q)}</div><div class="meta">${MODE_NAME[rec.mode]||''}${rec.auto||(rec.mode==='baithi'&&/(^|\s)(phan tich|lam ro|luan giai)/.test(foldS(rec.q.toLowerCase())))?' (bài thi phân tích)':''}${rec.field?' · Lĩnh vực: '+esc(rec.field):''}${rec.nSel?' · Trong '+rec.nSel+' tài liệu đã chọn':' · Dò tất cả tài liệu'}${rec.ai?' · '+esc(rec.ai):''}</div>
  <div class="ans ${live?'typing':''}"></div>
  <div class="row" style="margin-top:8px"><button class="sm fix b-copy">Sao chép</button><button class="sm fix b-word">Lưu Word</button><button class="sm fix b-src">Nguồn (${rec.hits.length})</button><button class="sm fix dan b-del">Xoá</button><span></span></div>
  <div class="srcs" style="display:none">${srcHtml(rec.hits)}</div>`;
@@ -604,11 +634,14 @@ async function ask(){
  if(!LIB.chunks.length){toast('Chưa có tài liệu — vào tab Tài liệu để nạp giáo trình');return}
  const autoPT=MODE==='traloi'&&/(^|\s)(phan tich|lam ro|luan giai|luan chung)(\s|$|[,.:;?])/.test(foldS(q.toLowerCase()));
  const em=autoPT?'phantich':MODE;
- const field=(em==='lienhe'||em==='goiy'||em==='phantich')?fieldValue():'';
- const maxTok=S.maxTok||(AI.kind==='server'?(em==='phantich'||em==='lienhe'?1800:1400):(em==='phantich'||em==='lienhe'?1000:700));
+ const wantLH=/(lien he|van dung|thuc tien|thuc te|ban than|don vi|dia phuong|co quan)/.test(foldS(q.toLowerCase()));
+ const isPTq=/(^|\s)(phan tich|lam ro|luan giai|luan chung)(\s|$|[,.:;?])/.test(foldS(q.toLowerCase()));
+ const field=(em==='lienhe'||em==='goiy'||em==='phantich'||(em==='baithi'&&(wantLH||isPTq)))?fieldValue():'';
+ const big=em==='phantich'||em==='lienhe'||em==='baithi';
+ const maxTok=S.maxTok||(AI.kind==='server'?(em==='baithi'?2000:big?1800:1400):(em==='baithi'?1200:big?1000:700));
  const k=Math.max(2,Math.min(15,+S.topK||6));
  const selS=selectedSet();let hits=LIB.search(q,selS,k);
- if(em==='phantich'){const cs=conceptHits(q,selS);if(cs.length)hits=[...cs,...hits.filter(x=>!cs.some(c=>c.id===x.id))]}
+ if(em==='phantich'||em==='baithi'){const cs=conceptHits(q,selS);if(cs.length)hits=[...cs,...hits.filter(x=>!cs.some(c=>c.id===x.id))]}
  const rec={id:uid('h'),q,mode:em,auto:autoPT,field,at:Date.now(),answer:'',hits:[],ai:AI.kind==='none'?'':AI.label,nSel:selS.size};
  if(AI.kind==='none'){rec.hits=hits.map(h=>({docName:(LIB.docMap.get(h.docId)||{}).name,head:h.head,page:h.page,text:h.text}));
   rec.answer=hits.length?`**Chưa có mô hình AI** — dưới đây là ${hits.length} đoạn giáo trình liên quan nhất (bấm vào từng đoạn để xem đầy đủ):\n\n`+hits.map((h,i)=>`- [${i+1}] ${(h.head||(LIB.docMap.get(h.docId)||{}).name||'')}: ${h.text.slice(0,260).replace(/\n/g,' ')}…`).join('\n'):'Không tìm thấy đoạn nào trong giáo trình khớp với câu hỏi.';
@@ -619,7 +652,7 @@ async function ask(){
  const el=qaCard(rec,true);$('#answers').prepend(el);updateAnsBar();const ans=el.querySelector('.ans');
  busy=true;$('#btnAsk').disabled=true;$('#btnStop').style.display='';ans.innerHTML='<p class="mu">Đang suy nghĩ… (máy yếu có thể mất 10–60 giây cho chữ đầu tiên)</p>';
  let last=0;
- try{const out=await AI.chat(msgs,{maxTokens:maxTok,temperature:+S.temp||0.3,onToken:t=>{rec.answer=t;const n=Date.now();if(n-last>120){last=n;ans.innerHTML=md(t)}}});rec.answer=(out||rec.answer).normalize('NFC')}
+ try{const out=await AI.chat(msgs,{maxTokens:maxTok,temperature:+S.temp||0.3,onToken:t=>{const v=stripThink(t);rec.answer=v;const n=Date.now();if(n-last>120){last=n;ans.innerHTML=v?md(v):'<p class="mu">Đang suy nghĩ…</p>'}}});rec.answer=stripThink(out||rec.answer).normalize('NFC')}
  catch(e){rec.answer=(rec.answer?rec.answer+'\n\n':'')+'⚠ Lỗi: '+(e.message||e)}
  ans.classList.remove('typing');ans.innerHTML=md(rec.answer||'(không có trả lời)');
  busy=false;$('#btnAsk').disabled=false;$('#btnStop').style.display='none';
@@ -682,11 +715,11 @@ $('#btnClearHist').onclick=async()=>{if(confirm('Xoá toàn bộ lịch sử h�
 /* ======================= CÀI ĐẶT ======================= */
 function fmtGB(b){return (b/1073741824).toFixed(2)+' GB'}
 function renderSettings(){
- $('#backend').value=S.backend;$('#serverUrl').value=S.serverUrl;$('#topK').value=S.topK;$('#maxTok').value=S.maxTok||'';$('#maxTok').placeholder='Tự động';$('#temp').value=S.temp;$('#useGpu').checked=S.useGpu;
+ $('#backend').value=S.backend;$('#serverUrl').value=S.serverUrl;$('#topK').value=S.topK;$('#maxTok').value=S.maxTok||'';$('#maxTok').placeholder='Tự động';$('#temp').value=S.temp;$('#speed').value=S.speed||'fast';$('#useGpu').checked=S.useGpu;
  $('#profileField').value=S.profileField;$('#customFields').value=S.customFields.join('\n');
  const ram=AI.ram();$('#ramInfo').textContent=(ram?`RAM máy này: ~${ram.toFixed(ram<8?1:0)} GB${!IS_ANDROID&&navigator.deviceMemory?' (trình duyệt chỉ báo tối đa 8)':''}. `:'')+`Đang dùng: ${AI.label||'—'}`;
  const ml=AI.localModels();$('#modelList').innerHTML=ml.length?ml.map(m=>`<div class="doc"><div class="nm">🧠 ${esc(m.name)} <span class="pill">${fmtGB(m.size)}</span>${AI.kind==='local'&&S.localModel===m.name?' <b style="color:var(--ok)">● đang dùng</b>':''}</div><button class="sm fix" data-use="${esc(m.name)}">Dùng</button>${IS_ANDROID?`<button class="sm fix dan" data-del="${esc(m.name)}">Xoá</button>`:''}</div>`).join(''):'Chưa có mô hình nào trên máy này.';
- const rec=ram>=7?'qwen2.5-1.5b-instruct-q4_k_m.gguf (~1,1 GB)':'qwen2.5-0.5b-instruct-q4_k_m.gguf (~0,5 GB)';
+ const rec=IS_ANDROID?(ram>=6?'Qwen3-1.7B-Q4_K_M.gguf (~1,3 GB)':'qwen2.5-0.5b-instruct-q4_k_m.gguf (~0,5 GB)'):(ram>=7?'Qwen3-4B-Instruct-2507-Q4_K_M.gguf (~2,5 GB)':'Qwen3-1.7B-Q4_K_M.gguf (~1,3 GB)');
  $('#modelHint').innerHTML=`Gợi ý theo RAM máy này: <b>${rec}</b>. File mô hình có sẵn trong bản phát hành trên GitHub (mục Releases). App tự chọn mô hình lớn nhất vừa RAM khi để chế độ "Tự động".`+(IS_ANDROID?'':'<br>Trên PC nên dùng chương trình HocLieuAI.exe (chạy AI nhanh hơn nhiều so với chạy trong trình duyệt).');
  $('#serverBox').style.display=(S.backend==='server'||(S.backend==='auto'&&IS_ANDROID))?'block':'none';
  $('#localBox').style.display=(S.backend==='local'||S.backend==='auto')?'block':'none'}
@@ -703,7 +736,7 @@ $('#modelList').onclick=async e=>{const b=e.target.closest('button');if(!b)retur
  if(b.dataset.del){if(!confirm('Xoá mô hình '+b.dataset.del+' khỏi điện thoại?'))return;if(AI.kind==='local'&&S.localModel===b.dataset.del){try{await AI.wl.exit()}catch(x){}AI.wl=null;AI.ready=false;AI.set('none','Chưa có mô hình AI',true)}AndroidBridge.deleteModel(b.dataset.del);renderSettings()}};
 $('#useGpu').onchange=()=>{S.useGpu=$('#useGpu').checked;saveSettings();toast('Bấm "Nạp mô hình" để áp dụng')};
 $('#btnSaveField').onclick=async()=>{S.profileField=$('#profileField').value.trim();S.customFields=[...new Set($('#customFields').value.split('\n').map(s=>s.trim()).filter(Boolean))];await saveSettings();renderFieldSel();toast('Đã lưu')};
-$('#btnSaveAns').onclick=async()=>{S.topK=Math.max(2,Math.min(15,+$('#topK').value||6));S.maxTok=+$('#maxTok').value||0;S.temp=Math.max(0,Math.min(1,+$('#temp').value||0));await saveSettings();renderSettings();toast('Đã lưu')};
+$('#btnSaveAns').onclick=async()=>{S.topK=Math.max(2,Math.min(15,+$('#topK').value||6));S.maxTok=+$('#maxTok').value||0;S.temp=Math.max(0,Math.min(1,+$('#temp').value||0));S.speed=$('#speed').value;await saveSettings();renderSettings();toast('Đã lưu')};
 
 /* ---- Xuất / nhập ---- */
 async function exportLib(){const data={app:'HocLieuAI',v:1,at:Date.now(),folders:await DB.all('folders'),docs:await DB.all('docs'),chunks:await DB.all('chunks'),hist:await DB.all('hist'),settings:{profileField:S.profileField,customFields:S.customFields}};
@@ -736,7 +769,7 @@ window.onAndroidBack=()=>{if($('#modal').classList.contains('on')){$('#modal').c
 /* ======================= Khởi động ======================= */
 const fixNav=()=>{$('nav').style.top=$('header').offsetHeight+'px'};fixNav();window.addEventListener('resize',fixNav);
 (async()=>{
- try{await DB.open();await loadSettings();MODE=S.mode;renderModes();await LIB.load();refreshAll();
+ try{await DB.open();await loadSettings();if(!S.modeV2){S.mode='baithi';S.modeV2=1;saveSettings()}MODE=S.mode;renderModes();await LIB.load();refreshAll();
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   updateAnsBar();await AI.detect();
   if(!LIB.docs.length)$('#answers').innerHTML='<div class="card hint" id="startHint">Bắt đầu: vào tab <b>Tài liệu</b> → tạo thư mục môn học → chọn file giáo trình (Word, PDF, ảnh) → <b>Nạp vào hệ thống</b>. Sau đó quay lại đây đặt câu hỏi.</div>';
